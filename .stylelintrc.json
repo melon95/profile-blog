@@ -1,0 +1,22 @@
+{
+  "extends": [
+    "stylelint-config-standard",
+    "stylelint-config-css-modules",
+    "stylelint-config-prettier"
+  ],
+  "ignoreFiles": ["**/*.js", "**/*.jsx", "**/*.tsx", "**/*.ts"],
+  "rules": {
+    "selector-pseudo-class-no-unknown": [
+      true,
+      {
+        "ignorePseudoClasses": ["global"]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": "**/*.less",
+      "customSyntax": "postcss-less"
+    }
+  ]
+}
