@@ -1,0 +1,8 @@
+version: '2'
+services:
+  latest:
+    network_mode: bridge
+    container_name: next-blog
+    image: next-blog:latest
+    ports:
+      - '80:3000'

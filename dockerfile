@@ -2,15 +2,18 @@
 FROM node:alpine AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
-COPY package.json pnpm.lock ./
-RUN yarn install --frozen-lockfile
+COPY package.json pnpm-lock.yaml ./
+RUN npm install -g pnpm
+RUN pnpm install
 
 # Rebuild the source code only when needed
 FROM node:alpine AS builder
 WORKDIR /app
 COPY . .
 COPY --from=deps /app/node_modules ./node_modules
-RUN yarn build && yarn install --production --ignore-scripts --prefer-offline
+# RUN yarn build && yarn install --production --ignore-scripts --prefer-offline
+RUN npm install -g pnpm
+RUN pnpm build && pnpm install --production  --ignore-scripts
 
 # Production image, copy all the files and run next
 FROM node:alpine AS runner
