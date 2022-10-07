@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router'
-
+import style from './index.module.css'
 
 interface IRouter {
   label: string;
@@ -46,12 +46,9 @@ const SideNav = () => {
   const linkTo = (route: string) => {
     return push(`${key}/${route}`)
   }
-  return <aside style={{
-    flex: '0 1 500px',
-    borderRight: '1px solid #ccc'
-  }} className="flex justify-end">
-    <nav style={{
-    width: '220px'
+  return <aside className={`${style.aside} flex justify-end`}>
+    <nav className={style.nav} style={{
+    
     }}>
       {
         curNav.map(cur => <div className='cursor-pointer' onClick={() => linkTo(cur.router)} key={cur.label}>{ cur.label }</div>)
