@@ -1,43 +1,59 @@
 import type { NextPage } from 'next'
 import { useRouter } from 'next/router'
 import { HomeName } from './_app'
-
+import { useEffect, useState } from 'react'
 
 const list = [
   {
     label: 'React系列',
-    router: 'react'
+    router: 'react',
   },
   {
     label: 'Webpack系列',
-    router: 'webpack'
+    router: 'webpack',
   },
   {
     label: 'Mobx系列',
-    router: 'mobx'
+    router: 'mobx',
   },
   {
     label: 'JavaScript系列',
-    router: 'js'
+    router: 'js',
   },
   {
     label: 'Node系列',
-    router: 'node'
+    router: 'node',
   },
 ]
 
 const Home: NextPage = () => {
   const { push } = useRouter()
-  const linkTo = (route: string) => {
-    return push(`/${route}`)
+  const linkTo: (r: string) => void = (route: string) => {
+    push(`/${route}`)
+  }
+  const [title, setTitle] = useState('2')
+  if (title) {
+    useEffect(() => {
+      if (title) {
+        setTitle(title + 2)
+      } else {
+        setTitle('2')
+      }
+    }, [])
   }
   return (
-    <div className='grid grid-cols-3 gap-8 place-content-center'>
-      {
-        list.map(item => <div style={{
-          border: '1px solid #ccc'
-        }} className="cursor-pointer flex justify-center items-center h-48" onClick={() => linkTo(item.router)} key={item.router}>{ item.label }</div>)
-      }
+    <div className="grid grid-cols-3 gap-8 place-content-center">
+      {list.map((item) => (
+        <div
+          style={{
+            border: '1px solid #ccc',
+          }}
+          className="cursor-pointer flex justify-center items-center h-48"
+          onClick={() => linkTo(item.router)}
+          key={item.router}>
+          {item.label}
+        </div>
+      ))}
     </div>
   )
 }

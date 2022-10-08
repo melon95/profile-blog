@@ -1,6 +1,7 @@
 const prettierConfigStandard = require('prettier-config-standard')
 const modifiedConfig = {
-  ...prettierConfigStandard
+  ...prettierConfigStandard,
+  trailingComma: 'all'
 }
 
 module.exports = modifiedConfig
