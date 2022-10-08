@@ -1,7 +1,6 @@
 import type { NextPage } from 'next'
 import { useRouter } from 'next/router'
 import { HomeName } from './_app'
-import { useEffect, useState } from 'react'
 
 const list = [
   {
@@ -30,16 +29,6 @@ const Home: NextPage = () => {
   const { push } = useRouter()
   const linkTo: (r: string) => void = (route: string) => {
     push(`/${route}`)
-  }
-  const [title, setTitle] = useState('2')
-  if (title) {
-    useEffect(() => {
-      if (title) {
-        setTitle(title + 2)
-      } else {
-        setTitle('2')
-      }
-    }, [])
   }
   return (
     <div className="grid grid-cols-3 gap-8 place-content-center">

@@ -17,10 +17,8 @@
   },
   "include": [
     "next-env.d.ts",
-    "pages/**/*.ts",
-    "pages/**/*.tsx",
-    "components/**/*.ts",
-    "components/**/*.tsx",
+    "pages",
+    "components",
     ".eslintrc.js",
     "tailwind.config.js",
     ".prettierrc.js"
