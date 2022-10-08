@@ -44,7 +44,7 @@ const SideNav = () => {
   const key = Object.keys(sideNavList).find((nav) => pathname.startsWith(nav))
   const curNav = key ? sideNavList[key] : []
   const linkTo = (route: string) => {
-    push(`${key}/${route}`)
+    push(`${key as string}/${route}`)
   }
   return (
     <aside className={`${style.aside} flex justify-end`}>

@@ -27,7 +27,7 @@ const list = [
 
 const Home: NextPage = () => {
   const { push } = useRouter()
-  const linkTo: (r: string) => void = (route: string) => {
+  const linkTo = (route: string) => {
     push(`/${route}`)
   }
   return (
