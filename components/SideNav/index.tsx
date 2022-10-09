@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router'
-import style from './index.module.css'
+import style from './index.module.scss'
 
 interface IRouter {
   label: string
@@ -12,31 +12,31 @@ const sideNavList: {
   '/react': [
     {
       label: 'react1',
-      router: 'test'
+      router: 'test',
     },
     {
       label: 'react2',
-      router: 'test1'
+      router: 'test1',
     },
     {
       label: 'react3',
-      router: 'test2'
-    }
+      router: 'test2',
+    },
   ],
   '/webpack': [
     {
       label: 'webpack1',
-      router: 'test'
+      router: 'test',
     },
     {
       label: 'webpac2',
-      router: 'test1'
+      router: 'test1',
     },
     {
       label: 'webpac3',
-      router: 'test2'
-    }
-  ]
+      router: 'test2',
+    },
+  ],
 }
 
 const SideNav = () => {
@@ -48,7 +48,7 @@ const SideNav = () => {
   }
   return (
     <aside className={`${style.aside} flex justify-end border-solid border-r`}>
-      <nav className={style.nav} style={{}}>
+      <nav className={style.nav}>
         {curNav.map((cur) => (
           <div
             className="cursor-pointer"

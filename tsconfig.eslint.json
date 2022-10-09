@@ -4,6 +4,8 @@
     "tailwind.config.js",
     "next-env.d.ts",
     "pages",
-    "components"
+    "components",
+    "next.config.js",
+    ".prettierrc.js"
   ]
 }

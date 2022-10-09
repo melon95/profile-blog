@@ -1,4 +1,10 @@
-import Document, { Html, Head, Main, NextScript, DocumentContext } from 'next/document'
+import Document, {
+  Html,
+  Head,
+  Main,
+  NextScript,
+  DocumentContext,
+} from 'next/document'
 
 class MyDocument extends Document {
   static async getInitialProps(ctx: DocumentContext) {
@@ -8,9 +14,9 @@ class MyDocument extends Document {
 
   render() {
     return (
-      <Html className='h-full'>
+      <Html className="h-full">
         <Head />
-        <body className='h-full'>
+        <body className="h-full">
           <Main />
           <NextScript />
         </body>

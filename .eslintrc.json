@@ -25,6 +25,7 @@
     "@typescript-eslint/explicit-function-return-type": 0,
     "@typescript-eslint/strict-boolean-expressions": 0,
     // 数组对象最后一行的行尾逗号
-    "comma-dangle": 0
+    "comma-dangle": 0,
+    "react-hooks/exhaustive-deps": 2
   }
 }

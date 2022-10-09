@@ -1,8 +1,8 @@
 import Header from '../Header'
 import Footer from '../Footer'
 import SideNav from '../SideNav'
-import React, { useEffect, useState } from 'react'
-import style from './index.module.css'
+import React from 'react'
+import style from './index.module.scss'
 
 interface IProps {
   children: React.ReactNode
@@ -10,11 +10,6 @@ interface IProps {
 }
 const Layout = (props: IProps) => {
   const { children, isHome } = props
-  const [title, setTitle] = useState('')
-  useEffect(() => {
-    console.log(title)
-    setTitle(title + (document.querySelector('h1')?.textContent ?? ''))
-  }, [])
   return (
     <>
       <Header />
