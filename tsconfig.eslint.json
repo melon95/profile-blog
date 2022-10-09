@@ -1,4 +1,9 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["tailwind.config.js"]
+  "include": [
+    "tailwind.config.js",
+    "next-env.d.ts",
+    "pages",
+    "components"
+  ]
 }
