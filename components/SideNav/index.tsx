@@ -12,31 +12,31 @@ const sideNavList: {
   '/react': [
     {
       label: 'react1',
-      router: 'test',
+      router: 'test'
     },
     {
       label: 'react2',
-      router: 'test1',
+      router: 'test1'
     },
     {
       label: 'react3',
-      router: 'test2',
-    },
+      router: 'test2'
+    }
   ],
   '/webpack': [
     {
       label: 'webpack1',
-      router: 'test',
+      router: 'test'
     },
     {
       label: 'webpac2',
-      router: 'test1',
+      router: 'test1'
     },
     {
       label: 'webpac3',
-      router: 'test2',
-    },
-  ],
+      router: 'test2'
+    }
+  ]
 }
 
 const SideNav = () => {
@@ -47,7 +47,7 @@ const SideNav = () => {
     push(`${key as string}/${route}`)
   }
   return (
-    <aside className={`${style.aside} flex justify-end`}>
+    <aside className={`${style.aside} flex justify-end border-solid border-r`}>
       <nav className={style.nav} style={{}}>
         {curNav.map((cur) => (
           <div
