@@ -18,6 +18,7 @@ const withMDX = nextMDX({
 export default withMDX({
   reactStrictMode: true,
   swcMinify: true,
+  output: 'standalone',
   pageExtensions: ['ts', 'tsx', 'md', 'mdx'],
   compiler: {
     removeConsole: {
