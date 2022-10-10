@@ -2,8 +2,11 @@
 const withMDX = require('@next/mdx')({
   extension: /\.mdx?$/,
   options: {
-    remarkPlugins: [],
-    rehypePlugins: [],
+    remarkPlugins: [
+      // import('recma-nextjs-static-props'),
+      // import('remark-mdx-frontmatter'),
+    ],
+    // recmaPlugins: [import('recma-nextjs-static-props')],
   },
 })
 module.exports = withMDX({
