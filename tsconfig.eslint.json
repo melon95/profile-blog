@@ -5,7 +5,7 @@
     "next-env.d.ts",
     "pages",
     "components",
-    "next.config.js",
+    "next.config.mjs",
     ".prettierrc.js"
   ]
 }
