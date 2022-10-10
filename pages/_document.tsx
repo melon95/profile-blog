@@ -16,6 +16,9 @@ class MyDocument extends Document {
     return (
       <Html className="h-full">
         <Head />
+        <link
+          rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.4.0/styles/github-dark.min.css"></link>
         <body className="h-full">
           <Main />
           <NextScript />

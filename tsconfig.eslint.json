@@ -3,8 +3,10 @@
   "include": [
     "tailwind.config.js",
     "next-env.d.ts",
-    "pages",
-    "components",
+    "pages/**/*.tsx",
+    "pages/**/*.ts",
+    "components/**/*.ts",
+    "components/**/*.tsx",
     "next.config.mjs",
     ".prettierrc.js"
   ]
