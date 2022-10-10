@@ -7,7 +7,6 @@ import nextMDX from '@next/mdx'
 const withMDX = nextMDX({
   extension: /\.mdx?$/,
   options: {
-    providerImportSource: '@mdx-js/react',
     remarkPlugins: [remarkFrontmatter, remarkMdxFrontmatter],
     recmaPlugins: [recmaNextjsStaticProps],
   },
@@ -17,8 +16,8 @@ export default withMDX({
   swcMinify: true,
   pageExtensions: ['ts', 'tsx', 'md', 'mdx'],
   compiler: {
-    // removeConsole: {
-    //   exclude: ['error'],
-    // },
+    removeConsole: {
+      exclude: ['error'],
+    },
   },
 })
