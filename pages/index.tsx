@@ -31,18 +31,17 @@ const Home: NextPage = () => {
     push(`/${route}`)
   }
   return (
-    <div className="grid grid-cols-3 gap-8 place-content-center">
-      {list.map((item) => (
-        <div
-          style={{
-            border: '1px solid #ccc',
-          }}
-          className="cursor-pointer flex justify-center items-center h-48"
-          onClick={() => linkTo(item.router)}
-          key={item.router}>
-          {item.label}
-        </div>
-      ))}
+    <div>
+      <div className="home-container mx-auto">
+        {list.map((item) => (
+          <div
+            className="cursor-pointer border-2 flex justify-center items-center h-48 my-8"
+            onClick={() => linkTo(item.router)}
+            key={item.router}>
+            {item.label}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

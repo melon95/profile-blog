@@ -15,6 +15,10 @@
 .nav-item-active {
   color: blue;
 }
+
+.home-container {
+  max-width: 780px;
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
