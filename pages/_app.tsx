@@ -1,4 +1,5 @@
 import '../styles/globals.css'
+import '../themes/Drake/drake-jb.css'
 import type { AppProps } from 'next/app'
 import Layout from '../components/Layout'
 import Head from '../components/Head'

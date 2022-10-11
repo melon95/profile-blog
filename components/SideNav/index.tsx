@@ -51,7 +51,7 @@ const SideNav = () => {
       <nav className={style.nav}>
         {curNav.map((cur) => (
           <div
-            className="cursor-pointer"
+            className="cursor-pointer text-lg my-2 text-opacity-60 text-black hover:text-opacity-100"
             onClick={() => linkTo(cur.router)}
             key={cur.label}>
             {cur.label}

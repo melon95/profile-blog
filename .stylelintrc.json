@@ -4,7 +4,7 @@
     "stylelint-config-css-modules",
     "stylelint-config-prettier"
   ],
-  "ignoreFiles": ["**/*.js", "**/*.jsx", "**/*.tsx", "**/*.ts"],
+  "ignoreFiles": ["**/*.js", "**/*.jsx", "**/*.tsx", "**/*.ts", "themes"],
   "rules": {
     "selector-pseudo-class-no-unknown": [
       true,

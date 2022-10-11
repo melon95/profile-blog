@@ -20,7 +20,7 @@ const Layout = (props: IProps) => {
           <>
             <SideNav />
             <div className="flex-auto">
-              <div className={`${style['blog-container']} m-auto prose`}>
+              <div id="write" className={`${style['blog-container']} m-auto`}>
                 {children}
               </div>
             </div>

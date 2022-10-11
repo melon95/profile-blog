@@ -22,7 +22,3 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-.hljs {
-  background: transparent !important;
-}

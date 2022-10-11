@@ -6,11 +6,12 @@ import rehypeHighlight from 'rehype-highlight'
 import rehypeSlug from 'rehype-slug'
 import rehypeStringify from 'rehype-stringify'
 import rehypeToc from '@jsdevtools/rehype-toc'
+import remarkGfm from 'remark-gfm'
 
 const withMDX = nextMDX({
   extension: /\.mdx?$/,
   options: {
-    remarkPlugins: [remarkFrontmatter, remarkMdxFrontmatter],
+    remarkPlugins: [remarkFrontmatter, remarkMdxFrontmatter, remarkGfm],
     recmaPlugins: [recmaNextjsStaticProps],
     rehypePlugins: [rehypeHighlight, rehypeSlug, rehypeToc, rehypeStringify],
   },
