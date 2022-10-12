@@ -1,0 +1,188 @@
+---
+title: React Render阶段
+keyword: react render beginWork completeWork fiber
+---
+
+# Render 阶段
+
+在 React 中 render 阶段是可以中断的，commit 阶段时同步的。这样设计是为了实现时间切片和可中断更新。
+
+采用双缓存技术，React 可以多次进行 render 阶段，只要没有进入 commit 阶段，就不会影响到页面的展示，因为这一切都是在内存中进行的。
+
+render 阶段按功能可以分为两个函数：
+
+- beginWork：DFS 的递阶段，从父级向下
+- completeWork：DFS 的归阶段，从子级向上
+
+render 阶段按挂载情况可以分为两种情况：
+
+- mount：第一个更新，不存在 curent fiber
+- update：存在 current fiber
+
+## beginWork
+
+beginWork 的任务主要分为以下几步：
+
+1. 检查能否复用 fiber
+2. 根据不同的 tag 执行不同的逻辑，创建子 fiber 并形成 fiber 树，并记录 fiber 在 commit 阶段需要进行操作
+
+```JS
+if (current !== null) {
+  let oldProps = current.memoizedProps;
+  let newProps = workInProgress.pendingProps;
+  if (oldProps !== newProps || hasContextChanged() || workInProgress.type !== current.type) {
+    didReceiveUpdate = true;
+  } else {
+    // 根据lans检查fiber是否包含在这次更新中
+    let hasScheduledUpdateOrContext = checkScheduledUpdateOrContext(current, renderLanes);
+
+    if (!hasScheduledUpdateOrContext) {
+      // No pending updates or context. Bail out now.
+      didReceiveUpdate = false;
+      // 复用fiber
+      return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
+    }
+  }
+} else {
+  didReceiveUpdate = false;
+}
+
+
+switch (workInProgress.tag) {
+    // class 和 function 组件第一次会进入这个分类，因为此时还没有区分是class 还是 function
+  case IndeterminateComponent:
+    {
+      return mountIndeterminateComponent(current, workInProgress, workInProgress.type, renderLanes);
+    }
+
+  case FunctionComponent:
+    {
+      let Component = workInProgress.type;
+      let resolvedProps = workInProgress.pendingProps;;
+      return updateFunctionComponent(current, workInProgress, Component, resolvedProps, renderLanes);
+    }
+
+  case ClassComponent:
+    {
+      let _Component = workInProgress.type;
+      let _resolvedProps = workInProgress.pendingProps;
+      return updateClassComponent(current, workInProgress, _Component, _resolvedProps, renderLanes);
+    }
+
+  case HostRoot:
+    return updateHostRoot(current, workInProgress, renderLanes);
+
+  case HostComponent:
+    return updateHostComponent(current, workInProgress, renderLanes);
+
+  case HostText:
+    return updateHostText(current, workInProgress);
+
+}
+```
+
+在 `updateClassComponent` 中会执行 class，创建实例，后续 state 等数据都保存实例上。
+
+```js
+let instance = workInProgress.stateNode
+let shouldUpdate
+
+if (instance === null) {
+  // 创建实例，并根据component***来设置flags
+  constructClassInstance(workInProgress, Component, nextProps)
+  mountClassInstance(workInProgress, Component, nextProps, renderLanes)
+  shouldUpdate = true
+} else {
+  // 执行shouldComponentUpdate方法，或者默认浅比较props和state
+  shouldUpdate = updateClassInstance(
+    current,
+    workInProgress,
+    Component,
+    nextProps,
+    renderLanes,
+  )
+}
+// 如果 shouldUpdate 为 false,表示不需要更新，则会进入 bailout，返回 null 或者 fiber 的子级
+// 如果 shouldUpdate 为 true，则会执行 实例的 render 方法，并返回 render 的返回值
+let nextUnitOfWork = finishClassComponent(
+  current,
+  workInProgress,
+  Component,
+  shouldUpdate,
+  hasContext,
+  renderLanes,
+)
+
+return nextUnitOfWork
+```
+
+在 `updateFunctionComponent` 中会执行 function，并把 function 的返回值作为 child 返回
+
+```js
+// renderWithHooks 执行 Component(函数本身)
+nextChildren = renderWithHooks(
+  current,
+  workInProgress,
+  Component,
+  nextProps,
+  context,
+  renderLanes,
+)
+
+// didReceiveUpdate 为浅比较 props 和 type 的结果
+// 在更新阶段，props 没有变化可以复用
+// 为什么要在执行完renderWithHooks后再处理复用逻辑？
+if (current !== null && !didReceiveUpdate) {
+  bailoutHooks(current, workInProgress, renderLanes)
+  return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes)
+}
+// 把子级的jsx转换为fiber,并赋值给workImProgress
+reconcileChildren(current, workInProgress, nextChildren, renderLanes)
+return workInProgress.child
+```
+
+复用 fiber 的逻辑比较简单：
+
+```js
+function bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes) {
+  if (!includesSomeLane(renderLanes, workInProgress.childLanes)) {
+    // 如果所有的子级都没有包括在这个更新中或者都没有更新，
+    // 代表这颗 fiber 树都可以跳过
+    {
+      return null
+    }
+  }
+
+  // fiber 不需要更新，但是子级存在更新
+  cloneChildFibers(current, workInProgress)
+  return workInProgress.child
+}
+```
+
+## completeWork
+
+也跟 `beginWork` 中一样，根据 tag 进行不同的操作，主要做了以下事情：
+
+1. 如果没有 DOM，则创建 DOM，并把所有的子 DOM 插入到新 DOM 中生成一棵 DOM 树
+2. 如果存在对应的 DOM，则对比 props 生成 updateQueue
+
+```JS
+if (current !== null && workInProgress.stateNode != null) {
+  // 对比props，生成updateQueue更新props
+  updateHostComponent$1(current, workInProgress, type, newProps, rootContainerInstance);
+
+  if (current.ref !== workInProgress.ref) {
+    markRef$1(workInProgress);
+  }
+} else {
+  // 创建DOM
+   let instance = createInstance(type, newProps, rootContainerInstance, currentHostContext, workInProgress);
+  // 插入子DOM
+  appendAllChildren(instance, workInProgress, false, false);
+  workInProgress.stateNode = instance;
+}
+```
+
+## 总结
+
+在整个 render 阶段后，已经有了一棵完整的 fiber 树和 DOM 树，并且对 fiber 上需要进行的操作也进行了记录，后面的事就是交给 commit 阶段去执行这些操作

@@ -11,16 +11,12 @@ const sideNavList: {
 } = {
   '/react': [
     {
-      label: 'react1',
-      router: 'test',
+      label: '介绍',
+      router: '/',
     },
     {
-      label: 'react2',
-      router: 'test1',
-    },
-    {
-      label: 'react3',
-      router: 'test2',
+      label: 'Render阶段',
+      router: 'render-phase',
     },
   ],
   '/webpack': [
