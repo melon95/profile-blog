@@ -1,25 +1,37 @@
 import { useRouter } from 'next/router'
+import { Icon } from '@iconify/react'
 
 const list = [
   {
     label: 'React',
+    key: 'react',
     router: '/react',
   },
   {
     label: 'Webpack',
+    key: 'webpack',
     router: '/webpack',
   },
   {
     label: 'Mobx',
+    key: 'mobx',
     router: '/mobx',
   },
   {
     label: 'Node',
+    key: 'node',
     router: '/node',
   },
   {
     label: 'JS',
+    key: 'js',
     router: '/js',
+  },
+  {
+    label: <Icon width={20} height={20} icon="eva:github-outline" />,
+    key: 'github',
+    target: '_blank',
+    router: 'https://github.com/melon95',
   },
 ]
 
@@ -39,26 +51,23 @@ const combineClass = (
 }
 
 const Nav = () => {
-  const { pathname, push } = useRouter()
-
-  const linkTo = (router: string) => {
-    push(router)
-  }
+  const { pathname } = useRouter()
 
   return (
     <div className="flex">
       {list.map((item) => (
-        <div
-          onClick={() => linkTo(item.router)}
+        <a
+          key={item.key}
           className={combineClass(
             pathname.startsWith(item.router),
             'nav-item-active',
             'nav-item',
-            'cursor-pointer',
+            'no-underline',
           )}
-          key={item.label}>
+          target={item.target}
+          href={item.router}>
           {item.label}
-        </div>
+        </a>
       ))}
     </div>
   )
