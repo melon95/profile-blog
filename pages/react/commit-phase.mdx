@@ -1,0 +1,65 @@
+---
+title: React Commit阶段
+keyword: react commit
+---
+
+# Commit 阶段
+
+在 render 阶段中，已经把 fiber 树准备好了，在 commit 阶段只需要同步的执行 fiber 上的操作。
+
+整个 commit 阶段分为 3 个大阶段
+
+3 个大阶段：
+
+- before mutation
+- mutation
+- layout
+
+在这 3 个阶段，都是从上往下递归 fiber 树，然后通过 `fiber.flags` 和 `fiber.subtreeFlags` 来判断 fiber 和 fiber.child 中是否存在需要执行的操作。
+
+## before before mutation
+
+在进入 before mutation 阶段前，也存在一些操作：
+
+- 把部分全局变量重置为默认值，比如曾用于批量更新的 `root.callbackPriority`、`root.callbackNode` 等
+
+- 利用 Scheduler 异步调度 `flushPassiveEffects` 等到 commit 阶段结束后，执行 effect 的销毁和创建
+
+## before mutation
+
+递归 fiber 树，执行 Class 的 `getSnapshotBeforeUpdate` 方法。
+
+## mutation
+
+递归 fiber 树，分别执行：
+
+- Function
+  - Insertion 的销毁和创建函数
+  - layout 的销毁函数
+- Class:
+  - ref 的解绑
+- Host
+  - DOM 的更新
+  - ref 的解绑
+- DOM 的删除和插入
+
+## layout
+
+递归 fiber 树，分别执行：
+
+- Funtion
+  - 执行 layoutEffect 的创建函数
+- Class
+  - componentDidMount
+  - componentDidUpdate
+  - 执行 setState 的回调函数
+- Host
+  - ref 的更新
+
+## after layout
+
+在结束 commit 阶段前，还会再一次的执行 `ensureRootIsScheduled`，确认 root 上所有的更新都已经被调度了。
+
+如果 effect 的更新是用户更新导致的，则立即同步调用 `flushPassiveEffects` 去执行 effect 的销毁和创建函数。再次检查 `root,pendingLanes` 是否包含 `SyncLane` 记录嵌套更新，因为 effect 也可能会触发更新。
+
+最后，执行 `flushSyncCallbacks`， 因为在 layout 阶段可能执行更新，并且需要同步的更新。

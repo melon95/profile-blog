@@ -15,8 +15,12 @@ const sideNavList: {
       router: '/',
     },
     {
-      label: 'Render阶段',
+      label: 'Render 阶段',
       router: 'render-phase',
+    },
+    {
+      label: 'Commit 阶段',
+      router: 'commit-phase',
     },
   ],
   '/webpack': [
