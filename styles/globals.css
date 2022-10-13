@@ -1,4 +1,8 @@
 /* stylelint-disable at-rule-no-unknown */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* stylelint-disable-next-line selector-id-pattern */
 #__next {
   height: 100%;
@@ -19,9 +23,6 @@
 .home-container {
   max-width: 780px;
 }
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 /* 消除Task下的li的默认样式 */
 .contains-task-list li.task-list-item::marker {

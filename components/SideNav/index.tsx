@@ -1,4 +1,5 @@
 import { useRouter } from 'next/router'
+import { useMemo } from 'react'
 import style from './index.module.scss'
 
 interface IRouter {
@@ -12,7 +13,7 @@ const sideNavList: {
   '/react': [
     {
       label: '介绍',
-      router: '/',
+      router: '',
     },
     {
       label: 'Render 阶段',
@@ -23,26 +24,22 @@ const sideNavList: {
       router: 'commit-phase',
     },
   ],
-  '/webpack': [
-    {
-      label: 'webpack1',
-      router: 'test',
-    },
-    {
-      label: 'webpac2',
-      router: 'test1',
-    },
-    {
-      label: 'webpac3',
-      router: 'test2',
-    },
-  ],
 }
 
 const SideNav = () => {
   const { pathname, push } = useRouter()
+  console.log(pathname)
   const key = Object.keys(sideNavList).find((nav) => pathname.startsWith(nav))
   const curNav = key ? sideNavList[key] : []
+
+  const curPage = useMemo(() => {
+    if (key) {
+      const list = pathname.split('/')
+      return list[2] || ''
+    }
+    return ''
+  }, [key, pathname])
+
   const linkTo = (route: string) => {
     push(`${key as string}/${route}`)
   }
@@ -51,7 +48,9 @@ const SideNav = () => {
       <nav className={style.nav}>
         {curNav.map((cur) => (
           <div
-            className="cursor-pointer text-lg my-2 text-opacity-60 text-black hover:text-opacity-100"
+            className={`cursor-pointer text-lg my-2 text-opacity-60 text-black hover:text-opacity-100 ${
+              cur.router === curPage ? 'nav-item-active' : ''
+            }`}
             onClick={() => linkTo(cur.router)}
             key={cur.label}>
             {cur.label}

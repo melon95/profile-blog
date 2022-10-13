@@ -22,8 +22,8 @@ export default withMDX({
   output: 'standalone',
   pageExtensions: ['ts', 'tsx', 'md', 'mdx'],
   compiler: {
-    removeConsole: {
-      exclude: ['error'],
-    },
+    // removeConsole: {
+    //   exclude: ['error'],
+    // },
   },
 })
