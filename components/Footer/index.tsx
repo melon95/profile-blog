@@ -5,7 +5,7 @@ const Footer = () => {
         <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh">
           CC BY-NC-SA 4.0
         </a>
-        © melon95.
+        {` © melon95.`}
       </span>
       <span className="ml-8">
         Designed and Proudly powered by Next、Docker、Tailwind.
