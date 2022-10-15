@@ -35,7 +35,7 @@ const Home: NextPage = () => {
       <div className="home-container mx-auto">
         {list.map((item) => (
           <div
-            className="cursor-pointer border flex justify-center items-center h-48 my-8"
+            className="cursor-pointer bg-bg-soft dark:bg-dark-bg-soft flex justify-center items-center h-32 my-8 text-text dark:text-dark-text"
             onClick={() => linkTo(item.router)}
             key={item.router}>
             {item.label}

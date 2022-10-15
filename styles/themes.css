@@ -1,0 +1,16 @@
+:root {
+  --color-primary: #42b883;
+  --color-neutral: rgb(60 60 60 / 70%);
+  --color-text: #213547;
+  --color-bg: #fff;
+  --color-bg-neutral: #f1f1f1;
+  --color-bg-soft: #f1f1f1;
+  --color-border: rgb(60 60 60 / 12%);
+  --color-dark-primary: #42b883;
+  --color-dark-neutral: #aac8e4;
+  --color-dark-text: rgb(255 255 255 / 87%);
+  --color-dark-bg: #1a1a1a;
+  --color-dark-bg-neutral: #1a1a1a;
+  --color-dark-bg-soft: #242424;
+  --color-dark-border: rgb(84 84 84 / 48%);
+}

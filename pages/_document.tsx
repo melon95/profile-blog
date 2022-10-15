@@ -18,8 +18,17 @@ class MyDocument extends Document {
         <Head />
         <link
           rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.4.0/styles/github-dark.min.css"></link>
-        <body className="h-full">
+          href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.4.0/styles/github-dark.min.css"
+        />
+        <link
+          rel="stylesheet"
+          href="https://qidian.gtimg.com/lulu/edge/css/common/ui/Checkbox.css"
+        />
+        <link
+          rel="stylesheet"
+          href="https://qidian.gtimg.com/lulu/edge/css/common/ui/Switch.css"
+        />
+        <body className="h-full bg-bg dark:bg-dark-bg">
           <Main />
           <NextScript />
         </body>

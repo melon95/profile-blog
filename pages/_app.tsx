@@ -1,5 +1,4 @@
 import '../styles/globals.css'
-import '../themes/tailwind/tailwind.css'
 import type { AppProps } from 'next/app'
 import Layout from '../components/Layout'
 import Head from '../components/Head'

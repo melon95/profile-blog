@@ -1,4 +1,10 @@
 /* stylelint-disable at-rule-no-unknown */
+@import './themes.css';
+
+/* @import '../themes/tailwind/tailwind.css'; */
+
+/* @import '../themes/tailwind/tailwind-dark.css'; */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -17,7 +23,7 @@
 }
 
 .nav-item-active {
-  color: blue;
+  color: var(--color-primary) !important;
 }
 
 .home-container {
@@ -25,6 +31,21 @@
 }
 
 /* 消除Task下的li的默认样式 */
+.hljs {
+  background-color: transparent !important;
+}
+
 .contains-task-list li.task-list-item::marker {
   content: '';
+}
+
+/* 改变lulu UI的switch控件的样式 */
+input[is='ui-switch'] {
+  background-color: var(--color-bg-soft) !important;
+  color: var(--color-bg-soft) !important;
+}
+
+input[is='ui-switch']:checked {
+  background-color: var(--color-dark-bg-soft) !important;
+  color: var(--color-dark-bg-soft) !important;
 }

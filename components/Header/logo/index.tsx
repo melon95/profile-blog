@@ -8,7 +8,7 @@ const Logo = () => {
   }
   return (
     <div
-      className="cursor-pointer font-mono text-xl font-bold"
+      className="cursor-pointer font-mono text-xl font-bold text-text dark:text-dark-text"
       onClick={goHome}>
       Idid
     </div>

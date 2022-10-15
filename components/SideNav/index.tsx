@@ -1,6 +1,7 @@
 import { useRouter } from 'next/router'
 import { useMemo } from 'react'
 import style from './index.module.scss'
+import classNames from 'classNames'
 
 interface IRouter {
   label: string
@@ -32,7 +33,6 @@ const sideNavList: {
 
 const SideNav = () => {
   const { pathname, push } = useRouter()
-  console.log(pathname)
   const key = Object.keys(sideNavList).find((nav) => pathname.startsWith(nav))
   const curNav = key ? sideNavList[key] : []
 
@@ -48,13 +48,17 @@ const SideNav = () => {
     push(`${key as string}/${route}`)
   }
   return (
-    <aside className={`${style.aside} flex justify-end border-solid border-r`}>
+    <aside
+      className={`${style.aside} flex justify-end border-r border-border dark:border-dark-border pt-6 pb-16`}>
       <nav className={style.nav}>
         {curNav.map((cur) => (
           <div
-            className={`cursor-pointer text-lg my-2 text-opacity-60 text-black hover:text-opacity-100 ${
-              cur.router === curPage ? 'nav-item-active' : ''
-            }`}
+            className={classNames(
+              'cursor-pointer text-base my-2 text-opacity-60 text-black hover:text-opacity-100 text-text dark:text-dark-text hover:text-primary dark:hover:text-primary',
+              {
+                'nav-item-active': cur.router === curPage,
+              },
+            )}
             onClick={() => linkTo(cur.router)}
             key={cur.label}>
             {cur.label}
