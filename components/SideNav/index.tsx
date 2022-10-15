@@ -23,6 +23,10 @@ const sideNavList: {
       label: 'Commit 阶段',
       router: 'commit-phase',
     },
+    {
+      label: 'Scheduler',
+      router: 'scheduler',
+    },
   ],
 }
 

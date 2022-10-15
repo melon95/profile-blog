@@ -1,0 +1,184 @@
+---
+title: Scheduler
+keyword: React Scheduler
+---
+
+# Scheduler
+
+Scheduler 是 React 实现异步可中断更新的基石之一。学习 Scheduler 原理也能加深你对 React 整理的理解。
+
+## 实现原理
+
+Scheduler 是通过 [MessageChannel](https://developer.mozilla.org/zh-CN/docs/Web/API/MessageChannel) 来实现异步的（至于为什么不用其他的宏任务，可以多思考一下）。
+
+```JS
+var channel = new MessageChannel();
+var port = channel.port2;
+channel.port1.onmessage = function () {
+  // ... do something
+}
+port.postMessage(null);
+```
+
+## 执行过程
+
+在 Scheduler 对外暴露的接口中 `scheduleCallback` 是起点函数 ，通过 `scheduleCallback` 把 callback 存储起来再异步执行。
+
+```JS
+// options 在当前版本暂未使用
+function unstable_scheduleCallback(priorityLevel, callback, options) {
+      var currentTime = exports.unstable_now();
+      var startTime
+
+      if (typeof options === 'object' && options !== null) {
+        var delay = options.delay;
+				startTime = currentTime + delay
+      } else {
+        startTime = currentTime;
+      }
+
+  		// 有效时间
+      var timeout;
+
+      switch (priorityLevel) {
+  			// 不同的优先级，有不同的有效时间：-1， 250， 5000， 10000
+      }
+			// 计算过期时间
+      var expirationTime = startTime + timeout;
+      var newTask = {
+        id: taskIdCounter++,
+        callback: callback,
+        priorityLevel: priorityLevel,
+        startTime: startTime,
+        expirationTime: expirationTime,
+        sortIndex: -1
+      };
+      // taskQueue：没有延期执行的task
+      // timerQueue: 延期执行的task
+      if (startTime > currentTime) {
+        // This is a delayed task.
+        newTask.sortIndex = startTime;
+        push(timerQueue, newTask);
+
+        if (peek(taskQueue) === null && newTask === peek(timerQueue)) {
+          // All tasks are delayed, and this is the task with the earliest delay.
+        if (!isHostCallbackScheduled && !isPerformingWork) {
+          // 没有被调度的任务，也没有正在执行的工作
+          isHostCallbackScheduled = true;
+          // 开始调度callback
+          requestHostCallback(flushWork);
+        }
+      }
+			// 返回task对象并保存在root.callbackNode中，可以用来取消当前callback(即把callback赋值为null)
+      return newTask;
+    }
+```
+
+ `requestHostCallback` 的逻辑很简单：保存 callback，并通过 MessageChannel 通信来异步调度 callback：
+
+```JS
+   function requestHostCallback(callback) {
+      scheduledHostCallback = callback;
+
+      if (!isMessageLoopRunning) {
+        isMessageLoopRunning = true;
+        // port 为 MessageChannel的port2,在最开始定义的
+        port.postMessage(null);
+      }
+    }
+```
+
+接下来就是等待浏览器异步执行 `channel.port1.onmessage` 的回调：
+
+```js
+   var performWorkUntilDeadline = function () {
+      if (scheduledHostCallback !== null) {
+        var currentTime = exports.unstable_now(); // Keep track of the start time so we can measure how long the main thread has been blocked.
+
+        startTime = currentTime;
+        var hasTimeRemaining = true;
+
+        var hasMoreWork = true;
+
+        try {
+          // scheduledHostCallback就是上传入的flushWork
+          hasMoreWork = scheduledHostCallback(hasTimeRemaining, currentTime);
+        } finally {
+          if (hasMoreWork) {
+            // If there's more work, schedule the next message event at the end
+            // of the preceding one.
+            // 如果还有任务则继续调度
+            port.postMessage(null);
+          } else {
+            isMessageLoopRunning = false;
+            scheduledHostCallback = null;
+          }
+        }
+      } else {
+        isMessageLoopRunning = false;
+      } // Yielding to the browser will give it a chance to paint, so we can
+    };
+```
+
+在 `flushWork` 中首先对 `timerQueue` 和 `taskQueue` 排序，取出 `taskQueue` 中最快过期的那个任务开始执行：
+
+```JS
+    function workLoop(hasTimeRemaining, initialTime) {
+      var currentTime = initialTime;
+      advanceTimers(currentTime);
+      currentTask = peek(taskQueue);
+
+      while (currentTask !== null) {
+        var callback = currentTask.callback;
+
+        if (typeof callback === 'function') {
+          currentTask.callback = null;
+          currentPriorityLevel = currentTask.priorityLevel;
+          var didUserCallbackTimeout = currentTask.expirationTime <= currentTime;
+					// 执行 performConcurrentWorkOnRoot
+          var continuationCallback = callback(didUserCallbackTimeout);
+          currentTime = exports.unstable_now();
+					// 时间切片的实现：performConcurrentWorkOnRoot 在当前时间片用完但是 render阶段还没完成时，会返回 performConcurrentWorkOnRoot 自身，用于下次继续更新，同时也会保留已经进行一部分的 render 阶段的数据
+          if (typeof continuationCallback === 'function') {
+            currentTask.callback = continuationCallback;
+          } else {
+						// 已经执行完毕，删除task
+            if (currentTask === peek(taskQueue)) {
+              pop(taskQueue);
+            }
+          }
+
+          advanceTimers(currentTime);
+        } else {
+          // 当react更新被更高优先级的更新打断后，task.callback会被赋值为null,在循环时会被取消
+          pop(taskQueue);
+        }
+
+        currentTask = peek(taskQueue);
+      } // Return whether there's additional work
+
+			// 如果taskQueue不为空，继续调度下一个task
+      if (currentTask !== null) {
+        return true;
+      } else {
+        // 拿到 timerQueue中，最快开始执行的 task
+        var firstTimer = peek(timerQueue);
+
+        if (firstTimer !== null) {
+          // 利用 setTimeout 调度一个去获取下一个需要执行的callback的函数
+          requestHostTimeout(handleTimeout, firstTimer.startTime - currentTime);
+        }
+
+        return false;
+      }
+    }
+```
+
+## Node 的实现
+
+Scheduler 在 Node 中是通过 `setImmediate` 来实现的：
+
+```js
+setImmediate(performWorkUntilDeadline)
+```
+
