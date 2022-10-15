@@ -3,6 +3,7 @@ import Footer from '../Footer'
 import SideNav from '../SideNav'
 import React from 'react'
 import style from './index.module.scss'
+import classNames from 'classnames'
 
 interface IProps {
   children: React.ReactNode
@@ -13,7 +14,12 @@ const Layout = (props: IProps) => {
   return (
     <>
       <Header />
-      <main id="layout-container" className={isHome ? 'p-4' : 'flex'}>
+      <main
+        id="layout-container"
+        className={classNames({
+          'p-4': isHome,
+          flex: !isHome,
+        })}>
         {isHome ? (
           children
         ) : (
@@ -22,7 +28,7 @@ const Layout = (props: IProps) => {
             <div className="flex-auto">
               <div
                 id="write"
-                className={`${style['blog-container']} m-auto prose dark:prose-invert py-16`}>
+                className={`${style['blog-container']} m-auto py-16 prose dark:prose-invert`}>
                 {children}
               </div>
             </div>
