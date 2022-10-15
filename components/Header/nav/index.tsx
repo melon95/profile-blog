@@ -48,6 +48,7 @@ const Nav = () => {
             type="checkbox"
             id="switch"
             is="ui-switch"
+            key="themes"
           />
         ),
         key: 'themes',
