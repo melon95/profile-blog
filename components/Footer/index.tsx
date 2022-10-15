@@ -3,7 +3,7 @@ const Footer = () => {
     <footer className="h-14 flex justify-center items-center border-t border-border dark:border-dark-border bg-bg-neutral dark:bg-dark-bg-neutral text-text dark:text-dark-text">
       <span>
         <a
-          className="text-text dark:text-dark-text"
+          className="text-text dark:text-dark-text underline"
           target="__blank"
           href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh">
           CC BY-NC-SA 4.0
