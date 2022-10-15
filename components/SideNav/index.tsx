@@ -1,7 +1,7 @@
 import { useRouter } from 'next/router'
 import { useMemo } from 'react'
 import style from './index.module.scss'
-import classNames from 'classNames'
+import classNames from 'classnames'
 
 interface IRouter {
   label: string

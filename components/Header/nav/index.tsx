@@ -1,6 +1,6 @@
 import { useRouter } from 'next/router'
 import { Icon } from '@iconify/react'
-import classNames from 'classNames'
+import classNames from 'classnames'
 import { useMemo, ChangeEventHandler } from 'react'
 
 const Nav = () => {
