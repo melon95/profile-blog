@@ -28,6 +28,10 @@ const sideNavList: {
       label: 'Scheduler',
       router: 'scheduler',
     },
+    {
+      label: '优先级',
+      router: 'proirity',
+    },
   ],
 }
 

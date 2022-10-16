@@ -1,0 +1,64 @@
+---
+title: React Priority
+keyword: React Priority
+---
+
+# React 中的优先级
+
+优先级是 React 中很核心的一个概念，像异步可中断的更新就是依据优先级来实现的，所以很有必要了解一下。
+
+不过在此之前，需要你的 React 的整体流程有一个大概的了解。
+
+## LanePriority
+
+lane 使用二进制来表示，总共有 31 种 lane，数值越小，优先级越高，比如：
+
+```js
+const SyncLane = 0b0000000000000000000000000000001
+const DefaultLane = 0b0000000000000000000000000010000
+```
+
+lanes 是 lane 组的意思，用来表示优先级相同的 lane。
+
+## SchedulePriority
+
+Scheduler 通过优先级来控制调度函数的有效时间，有如下优先级：
+
+```js
+const ImmediatePriority = 1
+const UserBlockingPriority = 2
+const NormalPriority = 3
+const LowPriority = 4
+const IdlePriority = 5
+```
+
+每个不同的优先级分别对应着不同的有效时间(ms)
+
+- ImmediatePriority: -1 表示已经过期了
+- UserBlockingPriority: 250
+- NormalPriority: 5000
+- LowPriority: 10000
+- IdlePriority: 1073741823（基本上是不会过期）
+
+## EventPriority
+
+```js
+const DiscreteEventPriority = SyncLane
+const ContinuousEventPriority = InputContinuousLane
+const DefaultEventPriority = DefaultLane
+const IdleEventPriority = IdleLane
+```
+
+表示当前更新的优先级。
+
+有三种方式来改变：
+
+1. 通过 `runWithPriority` 来设置函数执行过程中的 Priority
+2. 通过`setCurrentUpdatePriority` 来更新当前的 Priority，比如：在 `commitRoot` 前就会调用这个函数来更优先级更新为：DiscreteEventPriority 也就是同步执行
+3. 通过 `getCurrentUpdatePriority` 获取当前的 Priority，比如：
+   1. 在 hooks 的更新函数中创建 update 对象，会调用这个方法乎获取当前的 Proirity，只要不是 0，就会被用作 update 对象的 lane 属性
+   2. 用户触发的更新的同步的，就是在事件系统中通过 `setCurrentUpdatePriority` 来设置为 DiscreteEventPriority，从而在第一点中拿到的 lane 是 SyncLane，所以才会同步更新
+
+## 三者之间的联系
+
+在 `ensureRootIsScheduled` 中首先会先获取优先级最高的 lane（也就是二进制中最右边的 1），然后通过 `lanesToEventPriority` 转换为 EventPriority，最后把 EventPriority 映射对应的 SchedulePriority，用于 Scheduler 去调度更新函数 `performConcurrentWorkOnRoot`
