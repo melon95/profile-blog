@@ -32,6 +32,10 @@ const sideNavList: {
       label: '优先级',
       router: 'proirity',
     },
+    {
+      label: 'Hooks原理',
+      router: 'hooks',
+    },
   ],
 }
 

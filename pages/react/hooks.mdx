@@ -1,0 +1,513 @@
+---
+title: Hooks原理
+keyword: React Hooks
+---
+
+# Hooks 原理
+
+> _Hook_ 是 React 16.8 的新增特性。它可以让你在不编写 class 的情况下使用 state 以及其他的 React 特性。--- [Hook 的简介](https://zh-hans.reactjs.org/docs/hooks-intro.html)
+
+## 分类
+
+hook 从使用方式来说可以分为两类：
+
+### 提供数据
+
+- useState
+- useReducer
+- useCallback
+- useMemo
+- useContext
+
+### 执行副作用
+
+- useEffect
+- useLayoutEffect
+
+## 原理
+
+在 React 中会更加 DOM 是否挂载来把 render 阶段分为两种情况：mount 和 update 。在 hook 这里也一样，mount 和 update 下是不同的函数，作用也不相同。
+
+### useState 和 useReducer
+
+useState 就是使用了 reducer 的 useReducer，所以把它们放在一起介绍。
+
+```js
+// useState 使用的 reducer
+function basicStateReducer(state, action) {
+  // $FlowFixMe: Flow doesn't like mixed types
+  return typeof action === 'function' ? action(state) : action
+}
+```
+
+mount 下是 `mountState`，作用是：
+
+1. 创建 hook 对象，与 fiber 或其他 hook 建立关联
+2. 设置初始值
+3. 绑定更新函数
+
+```js
+function mountState(initialState) {
+  // 1. 创建 hook 对象，与 fiber 或其他 hook 建立关联
+  let hook = mountWorkInProgressHook()
+  // 2. 设置初始值
+  if (typeof initialState === 'function') {
+    initialState = initialState()
+  }
+
+  hook.memoizedState = hook.baseState = initialState
+  // queue 用于存储 state 的 update
+  let queue = {
+    pending: null,
+    interleaved: null,
+    lanes: NoLanes,
+    dispatch: null,
+    lastRenderedReducer: basicStateReducer,
+    lastRenderedState: initialState,
+  }
+  hook.queue = queue
+  // 3. 绑定更新函数
+  // currentlyRenderingFiber 为当前正在 render 的 fiber
+  let dispatch = (queue.dispatch = dispatchSetState.bind(
+    null,
+    currentlyRenderingFiber,
+    queue,
+  ))
+  return [hook.memoizedState, dispatch]
+}
+```
+
+关键在于是怎么创建 hook 对象并建立关联的：
+
+```js
+function mountWorkInProgressHook() {
+  let hook = {
+    // 存储的数据
+    memoizedState: null,
+    // 一般与memoizedState 相同，除非有低优先级更新被跳过
+    baseState: null,
+    // 被跳过的低优先级的update
+    baseQueue: null,
+    // 新产生的update
+    queue: null,
+    next: null,
+  }
+  // 与 fiber 或者其他 hook 建立关联
+  if (workInProgressHook === null) {
+    // This is the first hook in the list
+    currentlyRenderingFiber.memoizedState = workInProgressHook = hook
+  } else {
+    // Append to the end of the list
+    workInProgressHook = workInProgressHook.next = hook
+  }
+
+  return workInProgressHook
+}
+```
+
+mount 时的流程很简单，update 时的流程就要稍微复杂一点：
+
+1. 获取当前的 hook 对象
+2. 组合 hook 对象中 queue 和 baseQueue 的 update 链表
+3. 根据组合的 update 链表 和 baseState、update.lane 来计算出新的 memorizedState
+
+```js
+function updateReducer(reducer, initialArg, init) {
+  // 1. 获取当前的 hook 对象
+  let hook = updateWorkInProgressHook()
+  let queue = hook.queue
+
+  queue.lastRenderedReducer = reducer
+  let current = currentHook // The last rebase update that is NOT part of the base state.
+
+  let baseQueue = current.baseQueue // The last pending update that hasn't been processed yet.
+
+  let pendingQueue = queue.pending
+  // 合并 queue.peding 到 baseQueue 中
+  if (pendingQueue !== null) {
+    // We have new updates that haven't been processed yet.
+    // We'll add them to the base queue.
+    if (baseQueue !== null) {
+      // Merge the pending queue and the base queue.
+      let baseFirst = baseQueue.next
+      let pendingFirst = pendingQueue.next
+      baseQueue.next = pendingFirst
+      pendingQueue.next = baseFirst
+    }
+    current.baseQueue = baseQueue = pendingQueue
+    queue.pending = null
+  }
+  // 根据baseQueue 和 baseState 以及 lane 计算新的 memorizedState 和 baseState
+  if (baseQueue !== null) {
+    // We have a queue to process.
+    let first = baseQueue.next
+    let newState = current.baseState
+    let newBaseState = null
+    let newBaseQueueFirst = null
+    let newBaseQueueLast = null
+    let update = first
+
+    do {
+      let updateLane = update.lane
+
+      if (!isSubsetOfLanes(renderLanes, updateLane)) {
+        // 优先级不够，如果这是第一个被跳过的更新，上一个的 update/state 是新的baseQueue/baseState
+        let clone = {
+          lane: updateLane,
+          action: update.action,
+          hasEagerState: update.hasEagerState,
+          eagerState: update.eagerState,
+          next: null,
+        }
+
+        if (newBaseQueueLast === null) {
+          newBaseQueueFirst = newBaseQueueLast = clone
+          newBaseState = newState
+        } else {
+          newBaseQueueLast = newBaseQueueLast.next = clone
+        }
+      } else {
+        // 这个 update 有足够的优先级
+        // 如果有update被跳过，记录该update以后的所有update
+        if (newBaseQueueLast !== null) {
+          let _clone = {
+            lane: NoLane,
+            action: update.action,
+            hasEagerState: update.hasEagerState,
+            eagerState: update.eagerState,
+            next: null,
+          }
+          newBaseQueueLast = newBaseQueueLast.next = _clone
+        }
+        let action = update.action
+        newState = reducer(newState, action)
+      }
+
+      update = update.next
+    } while (update !== null && update !== first)
+
+    // 如果没有被跳过的更新，则memoizedState === baseState
+    if (newBaseQueueLast === null) {
+      newBaseState = newState
+    } else {
+      newBaseQueueLast.next = newBaseQueueFirst
+    }
+
+    hook.memoizedState = newState
+    hook.baseState = newBaseState
+    hook.baseQueue = newBaseQueueLast
+    queue.lastRenderedState = newState
+  }
+  let dispatch = queue.dispatch
+  return [hook.memoizedState, dispatch]
+}
+```
+
+上面已经很清晰的展示 update 中第 2、3 两个步骤的过程，下面主要了解怎么获取 update 中的 hook 对象，这在所有 hook 中都是通用的，所以很重要：
+
+```js
+function updateWorkInProgressHook() {
+  // 1. 先拿到 current fiber上的 hook
+  let nextCurrentHook
+  // currentHook 为全局变量，存储当前fiber 中的当前fiber
+  if (currentHook === null) {
+    // 表示这是第一个fiber
+    let current = currentlyRenderingFiber.alternate
+
+    if (current !== null) {
+      nextCurrentHook = current.memoizedState
+    } else {
+      nextCurrentHook = null
+    }
+  } else {
+    nextCurrentHook = currentHook.next
+  }
+  // 2. 拿到workInProcess fiber 上的hook
+  let nextWorkInProgressHook
+
+  if (workInProgressHook === null) {
+    nextWorkInProgressHook = currentlyRenderingFiber.memoizedState
+  } else {
+    nextWorkInProgressHook = workInProgressHook.next
+  }
+
+  if (nextWorkInProgressHook !== null) {
+    // workInProcess fiber 中已经存在了 hook 链表
+    workInProgressHook = nextWorkInProgressHook
+    nextWorkInProgressHook = workInProgressHook.next
+    currentHook = nextCurrentHook
+  } else {
+    // 第一个进入 update 阶段，赋值 current hook
+    currentHook = nextCurrentHook
+    let newHook = {
+      memoizedState: currentHook.memoizedState,
+      baseState: currentHook.baseState,
+      baseQueue: currentHook.baseQueue,
+      queue: currentHook.queue,
+      next: null,
+    }
+
+    if (workInProgressHook === null) {
+      // This is the first hook in the list.
+      currentlyRenderingFiber.memoizedState = workInProgressHook = newHook
+    } else {
+      // Append to the end of the list.
+      workInProgressHook = workInProgressHook.next = newHook
+    }
+  }
+
+  return workInProgressHook
+}
+```
+
+大体逻辑就是：
+
+1. 先获取到 current fiber 上的 hook
+2. 在获取 workInProcess fiber 上的 hook，如果 workInProcess fiber 上不存在 hook，则表示是第一次进入 update，则复用 current fiber 上的 hook
+3. 返回 workInProcess fiber 上的当前 hook
+
+### useEffect 和 useLayoutEffect
+
+useEffect 和 useLayoutEffect 的逻辑是完全一样的，只是 `effect.tag` 属性值的不同，因此也放到一块来说。
+
+还是区分两个情况：mount、update
+
+mount 时的流程：
+
+1. 创建 hook 对象，并与 fiber 或其他 hook 对象建立关联
+2. 给 fiber.flags 添加 对应的 flag
+3. 创建 effect 对象，并分别保存起来于 `hook.memorizedState `和 `fiber.updateQueue` 上
+
+```js
+function mountEffectImpl(fiberFlags, hookFlags, create, deps) {
+  // 1. 创建 hook 对象，并与 fiber 或其他 hook 对象建立关联
+  let hook = mountWorkInProgressHook()
+  let nextDeps = deps === undefined ? null : deps
+  // 2. 给 fiber.flags 添加 对应的 flag，可以用于判断fiber上是否有effect和layoutEffect需要执行
+  currentlyRenderingFiber.flags |= fiberFlags
+  // 3. 创建关键的effect对象
+  hook.memoizedState = pushEffect(
+    HasEffect | hookFlags,
+    create,
+    undefined,
+    nextDeps,
+  )
+}
+```
+
+`pushEffect` 分为两步：
+
+1. 创建 effect 对象
+2. 与 fiber 或者其他 effect 对象建立关联
+
+```js
+function pushEffect(tag, create, destroy, deps) {
+  // 1. 创建 effect 对象
+  let effect = {
+    tag: tag,
+    create: create,
+    destroy: destroy,
+    deps: deps,
+    next: null,
+  }
+  let componentUpdateQueue = currentlyRenderingFiber.updateQueue
+  // 保存到fiber.updateQueue上，并形成环状链表
+  if (componentUpdateQueue === null) {
+    componentUpdateQueue = createFunctionComponentUpdateQueue()
+    currentlyRenderingFiber.updateQueue = componentUpdateQueue
+    componentUpdateQueue.lastEffect = effect.next = effect
+  } else {
+    let lastEffect = componentUpdateQueue.lastEffect
+
+    if (lastEffect === null) {
+      componentUpdateQueue.lastEffect = effect.next = effect
+    } else {
+      let firstEffect = lastEffect.next
+      lastEffect.next = effect
+      effect.next = firstEffect
+      componentUpdateQueue.lastEffect = effect
+    }
+  }
+
+  return effect
+}
+```
+
+update 与 mount 基本一致，只不过多了一个比较新旧 deps 的过程
+
+```js
+function updateEffectImpl(fiberFlags, hookFlags, create, deps) {
+  let hook = updateWorkInProgressHook()
+  let nextDeps = deps === undefined ? null : deps
+  let destroy = undefined
+
+  if (currentHook !== null) {
+    let prevEffect = currentHook.memoizedState
+    destroy = prevEffect.destroy
+
+    if (nextDeps !== null) {
+      let prevDeps = prevEffect.deps
+
+      if (areHookInputsEqual(nextDeps, prevDeps)) {
+        // ⚠️ 这里pushEffect的第一个参数是hookFlags，表示这个effect不需要执行
+        hook.memoizedState = pushEffect(hookFlags, create, destroy, nextDeps)
+        return
+      }
+    }
+  }
+
+  currentlyRenderingFiber.flags |= fiberFlags
+  // ⚠️ 这里pushEffect的第一个参数是HasEffect | hookFlags，表示这个effect需要执行
+  hook.memoizedState = pushEffect(
+    HasEffect | hookFlags,
+    create,
+    destroy,
+    nextDeps,
+  )
+}
+```
+
+### useMemo 和 useCallback
+
+mount 的流程：
+
+1. 创建 hook 对象，并与 fiber 或其他 hook 对象建立关联
+2. useMemo 执行传入的函数，并返回结果
+3. useCallback 返回传入的函数
+
+可以看出 useMemo 和 useCallback 的区别就只在于：是否执行传入的函数
+
+```js
+// useMemo
+function mountMemo(nextCreate, deps) {
+  let hook = mountWorkInProgressHook()
+  let nextDeps = deps === undefined ? null : deps
+  // 执行传入的函数
+  let nextValue = nextCreate()
+  hook.memoizedState = [nextValue, nextDeps]
+  return nextValue
+}
+
+// useCallback
+function mountCallback(callback, deps) {
+  let hook = mountWorkInProgressHook()
+  let nextDeps = deps === undefined ? null : deps
+  hook.memoizedState = [callback, nextDeps]
+  return callback
+}
+```
+
+update 的流程：
+
+1. 如果新旧 deps 一致，则返回上次的值
+2. useMemo 返回传入函数的返回值
+3. useCallback 返回新的函数
+
+```js
+// useMemo
+function updateMemo(nextCreate, deps) {
+  let hook = updateWorkInProgressHook()
+  let nextDeps = deps === undefined ? null : deps
+  let prevState = hook.memoizedState
+
+  if (prevState !== null) {
+    // Assume these are defined. If they're not, areHookInputsEqual will warn.
+    if (nextDeps !== null) {
+      let prevDeps = prevState[1]
+
+      if (areHookInputsEqual(nextDeps, prevDeps)) {
+        // 如果 deps 没有改变，则返回之前计算好的结果
+        return prevState[0]
+      }
+    }
+  }
+  // 否则重新执行传入的函数
+  let nextValue = nextCreate()
+  hook.memoizedState = [nextValue, nextDeps]
+  return nextValue
+}
+
+// useCallback
+function updateCallback(callback, deps) {
+  let hook = updateWorkInProgressHook()
+  let nextDeps = deps === undefined ? null : deps
+  let prevState = hook.memoizedState
+
+  if (prevState !== null) {
+    if (nextDeps !== null) {
+      let prevDeps = prevState[1]
+
+      if (areHookInputsEqual(nextDeps, prevDeps)) {
+        return prevState[0]
+      }
+    }
+  }
+
+  hook.memoizedState = [callback, nextDeps]
+  return callback
+}
+```
+
+### useRef
+
+mount 的流程：
+
+1. 创建一个包含 `current` 属性的对象
+
+updatea 就是直接返回 mount 时创建的对象
+
+```js
+function mountRef(initialValue) {
+  let hook = mountWorkInProgressHook()
+
+  {
+    let _ref2 = {
+      current: initialValue,
+    }
+    hook.memoizedState = _ref2
+    return _ref2
+  }
+}
+
+function updateRef(initialValue) {
+  let hook = updateWorkInProgressHook()
+  return hook.memoizedState
+}
+```
+
+### useContext
+
+useContext 稍微特殊一点，不管是 mount 还是 update ，对应的都是一个函数： `readContext`
+
+```js
+function readContext(context) {
+  // 1. 获取context对象的存储的值
+  let value = context._currentValue
+
+  if (lastFullyObservedContext === context);
+  else {
+    // 如果当前context没有和fiber关联，则创建一个contextItem对象，保存到fiber.dependencies上
+    // 当context更新时，在通过确认fiber.dependencies是否存在当前context对象来确定fiber是否需要更新
+    let contextItem = {
+      context: context,
+      memoizedValue: value,
+      next: null,
+    }
+
+    if (lastContextDependency === null) {
+      // This is the first dependency for this component. Create a new list.
+
+      lastContextDependency = contextItem
+      currentlyRenderingFiber.dependencies = {
+        lanes: NoLanes,
+        firstContext: contextItem,
+      }
+    } else {
+      // Append a new context item.
+      lastContextDependency = lastContextDependency.next = contextItem
+    }
+  }
+
+  return value
+}
+```
