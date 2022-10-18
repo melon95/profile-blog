@@ -1,0 +1,390 @@
+---
+title: 合成事件
+keyword: React 合成事件
+---
+
+# 合成事件
+
+从 Reactv17 开始, React 不会再将事件处理添加到 document 上, 而是将事件处理添加到渲染 React 树的根 DOM 容器中。
+
+![img](http://melon.melon95.cn/images/2022/09/03/react_17_delegation-5fd7764d201a32b6551e3f7f8accfcad.png)
+
+React 的合成事件分为两个阶段：
+
+- 监听：在 `listenToAllSupportedEvents` 中通过 `addEventListener` 来设置回调函数
+- 触发：触发回调函数，获取触发的 DOM，然后从 `DOM.__reactProps` 获取真正的回调函数执行
+
+## 监听
+
+```js
+function listenToAllSupportedEvents(rootContainerElement) {
+  if (!rootContainerElement[listeningMarker]) {
+    // 防止重复设置
+    rootContainerElement[listeningMarker] = true
+    allNativeEvents.forEach(function (domEventName) {
+      if (domEventName !== 'selectionchange') {
+        if (!nonDelegatedEvents.has(domEventName)) {
+          // 不是所有方法都是通过rootContainerElement的事件委托来触发的
+          listenToNativeEvent(domEventName, false, rootContainerElement)
+        }
+        // 分优先级，创建并绑定回调函数
+        listenToNativeEvent(domEventName, true, rootContainerElement)
+      }
+    })
+  }
+}
+```
+
+`listenToNativeEvent` 通过调用 `addTrappedEventListener` 来完成所有的事情
+
+```js
+function addTrappedEventListener(
+  targetContainer,
+  domEventName,
+  eventSystemFlags,
+  isCapturePhaseListener,
+  isDeferredListenerForLegacyFBSupport,
+) {
+  // 根据方法名获取优先级，根据优先级获取不同的回调函数，不过最终都是调用dispatchEvent
+  let listener = createEventListenerWrapperWithPriority(
+    targetContainer,
+    domEventName,
+    eventSystemFlags,
+  )
+
+  targetContainer = targetContainer
+  let unsubscribeListener
+  if (isCapturePhaseListener) {
+    // 捕获阶段
+    unsubscribeListener = addEventCaptureListener(
+      targetContainer,
+      domEventName,
+      listener,
+    )
+  } else {
+    // 冒泡阶段
+    unsubscribeListener = addEventBubbleListener(
+      targetContainer,
+      domEventName,
+      listener,
+    )
+  }
+}
+```
+
+### 设置监听函数
+
+设置监听函数就是调用 `addEventListener`：
+
+```js
+function addEventCaptureListener(target, eventType, listener) {
+  target.addEventListener(eventType, listener, true)
+  return listener
+}
+function addEventBubbleListener(target, eventType, listener) {
+  target.addEventListener(eventType, listener, false)
+  return listener
+}
+```
+
+### 获取 listener
+
+唯一的重点就是获取 `listener`：
+
+```js
+function createEventListenerWrapperWithPriority(
+  targetContainer,
+  domEventName,
+  eventSystemFlags,
+) {
+  // 根据React定义好的case获取优先级
+  let eventPriority = getEventPriority(domEventName)
+  let listenerWrapper
+  // 不管是哪个优先级最后都是调用diapatchEvent方法，区别在于全局变量currentUpdatePriority不同而已
+  switch (eventPriority) {
+    case DiscreteEventPriority:
+      listenerWrapper = dispatchDiscreteEvent
+      break
+
+    case ContinuousEventPriority:
+      listenerWrapper = dispatchContinuousEvent
+      break
+
+    case DefaultEventPriority:
+    default:
+      listenerWrapper = dispatchEvent
+      break
+  }
+
+  return listenerWrapper.bind(
+    null,
+    domEventName,
+    eventSystemFlags,
+    targetContainer,
+  )
+}
+```
+
+### Event 优先级的意义
+
+在监听阶段设置的 `listenerWrapper` 是一个很重要的点，涉及到用户触发更新的优先级，下面就看一个示例：
+
+```js
+function dispatchDiscreteEvent(
+  domEventName,
+  eventSystemFlags,
+  container,
+  nativeEvent,
+) {
+  let previousPriority = getCurrentUpdatePriority()
+  let prevTransition = ReactCurrentBatchConfig.transition
+  ReactCurrentBatchConfig.transition = null
+
+  try {
+    // DiscreteEventPriority = SyncLane
+    // 在执行 dispatchEvent 前，会把更新优先级设置为同步，从而在这中事件中触发的更新都是同步的更新
+    setCurrentUpdatePriority(DiscreteEventPriority)
+    dispatchEvent(domEventName, eventSystemFlags, container, nativeEvent)
+  } finally {
+    setCurrentUpdatePriority(previousPriority)
+    ReactCurrentBatchConfig.transition = prevTransition
+  }
+}
+```
+
+当在事件中触发更新时，会创建一个 update 对象，在计算 update 对象的 lane 属性时：有这么一段逻辑：
+
+```js
+function requestUpdateLane(fiber) {
+  // Special cases
+  let mode = fiber.mode
+
+  if ((mode & ConcurrentMode) === NoMode) {
+    return SyncLane
+  } else if (
+    (executionContext & RenderContext) !== NoContext &&
+    workInProgressRootRenderLanes !== NoLanes
+  ) {
+    return pickArbitraryLane(workInProgressRootRenderLanes)
+  }
+  // 从这里获取在执行dispacthEvent前设置的 EventPriority
+  let updateLane = getCurrentUpdatePriority()
+  // 直接返回 EventPriority
+  if (updateLane !== NoLane) {
+    return updateLane
+  }
+  let eventLane = getCurrentEventPriority()
+  return eventLane
+}
+```
+
+所以设置 EventPriority 的意义就是为了快速响应用户的交互。
+
+## 触发
+
+当触发事件时会执行到 `diapatchEvent -> dispatchEventForPluginEventSystem`
+
+```js
+function dispatchEventForPluginEventSystem(
+  domEventName,
+  eventSystemFlags,
+  nativeEvent,
+  targetInst,
+  targetContainer,
+) {
+  let ancestorInst = targetInst
+  // ...
+  batchedUpdates(function () {
+    // 收集事件，执行回调
+    return dispatchEventsForPlugins(
+      domEventName,
+      eventSystemFlags,
+      nativeEvent,
+      ancestorInst,
+    )
+  })
+}
+```
+
+```js
+function dispatchEventsForPlugins(
+  domEventName,
+  eventSystemFlags,
+  nativeEvent,
+  targetInst,
+  targetContainer,
+) {
+  // 获取event.target
+  let nativeEventTarget = getEventTarget(nativeEvent)
+  let dispatchQueue = []
+  // 从当前fiber开始往上遍历，收集同名事件
+  extractEvents(
+    dispatchQueue,
+    domEventName,
+    targetInst,
+    nativeEvent,
+    nativeEventTarget,
+    eventSystemFlags,
+  )
+  // 执行事件，捕获阶段倒序执行，冒泡阶段正序执行
+  processDispatchQueue(dispatchQueue, eventSystemFlags)
+}
+```
+
+### 收集事件
+
+```js
+function extractEvents(
+  dispatchQueue,
+  domEventName,
+  targetInst,
+  nativeEvent,
+  nativeEventTarget,
+  eventSystemFlags,
+  targetContainer,
+) {
+  let reactName = topLevelEventsToReactNames.get(domEventName)
+
+  let SyntheticEventCtor = SyntheticEvent
+  let reactEventType = domEventName
+
+  switch (
+    domEventName
+    //  根据事件，采用不同的SynthetEvent函数来创建实例
+  ) {
+  }
+  // 判断是不是捕获阶段
+  let inCapturePhase = (eventSystemFlags & IS_CAPTURE_PHASE) !== 0
+
+  let accumulateTargetOnly = !inCapturePhase && domEventName === 'scroll'
+
+  let _listeners = accumulateSinglePhaseListeners(
+    targetInst,
+    reactName,
+    nativeEvent.type,
+    inCapturePhase,
+    accumulateTargetOnly,
+  )
+
+  if (_listeners.length > 0) {
+    // 实例化 SynthetEvent
+    let _event = new SyntheticEventCtor(
+      reactName,
+      reactEventType,
+      null,
+      nativeEvent,
+      nativeEventTarget,
+    )
+    dispatchQueue.push({
+      event: _event,
+      listeners: _listeners,
+    })
+  }
+}
+```
+
+#### 获取 fiber 上设置的回调函数
+
+```js
+function accumulateSinglePhaseListeners(
+  targetFiber,
+  reactName,
+  nativeEventType,
+  inCapturePhase,
+  accumulateTargetOnly,
+  nativeEvent,
+) {
+  let captureName = reactName !== null ? reactName + 'Capture' : null
+  let reactEventName = inCapturePhase ? captureName : reactName
+  let listeners = []
+  let instance = targetFiber
+  let lastHostComponent = null // Accumulate all instances and listeners via the target -> root path.
+
+  while (instance !== null) {
+    let _instance2 = instance
+    let stateNode = _instance2.stateNode
+    let tag = _instance2.tag // Handle listeners that are on HostComponents (i.e. <div>)
+
+    if (tag === HostComponent && stateNode !== null) {
+      lastHostComponent = stateNode // createEventHandle listeners
+
+      if (reactEventName !== null) {
+        let listener = instance.stateNode[internalPropsKey][registrationName]
+
+        if (listener != null) {
+          listeners.push({
+            instance: instance,
+            listener: listener,
+            currentTarget: currentTarget,
+          })
+        }
+      }
+    }
+    instance = instance.return
+  }
+
+  return listeners
+}
+```
+
+### 执行事件
+
+执行事件分为两轮遍历：
+
+- 第一轮：遍历 `dispatchQueue`
+- 第二轮：遍历 `dispatchQueue[index].listeners`，执行 listener 函数
+
+```js
+function processDispatchQueue(dispatchQueue, eventSystemFlags) {
+  let inCapturePhase = (eventSystemFlags & IS_CAPTURE_PHASE) !== 0
+
+  for (let i = 0; i < dispatchQueue.length; i++) {
+    let _dispatchQueue$i = dispatchQueue[i]
+    let event = _dispatchQueue$i.event
+    let listeners = _dispatchQueue$i.listeners
+    processDispatchQueueItemsInOrder(event, listeners, inCapturePhase)
+  }
+}
+```
+
+```js
+function processDispatchQueueItemsInOrder(
+  event,
+  dispatchListeners,
+  inCapturePhase,
+) {
+  let previousInstance
+
+  if (inCapturePhase) {
+    // 捕获阶段，倒序执行
+    for (let i = dispatchListeners.length - 1; i >= 0; i--) {
+      let _dispatchListeners$i = dispatchListeners[i]
+      let instance = _dispatchListeners$i.instance
+      let currentTarget = _dispatchListeners$i.currentTarget
+      let listener = _dispatchListeners$i.listener
+
+      if (instance !== previousInstance && event.isPropagationStopped()) {
+        return
+      }
+      // 执行函数
+      executeDispatch(event, listener, currentTarget)
+      previousInstance = instance
+    }
+  } else {
+    // 冒泡阶段，正序执行
+    for (let _i = 0; _i < dispatchListeners.length; _i++) {
+      let _dispatchListeners$_i = dispatchListeners[_i]
+      let _instance = _dispatchListeners$_i.instance
+      let _currentTarget = _dispatchListeners$_i.currentTarget
+      let _listener = _dispatchListeners$_i.listener
+
+      if (_instance !== previousInstance && event.isPropagationStopped()) {
+        return
+      }
+      // 执行函数
+      executeDispatch(event, _listener, _currentTarget)
+      previousInstance = _instance
+    }
+  }
+}
+```

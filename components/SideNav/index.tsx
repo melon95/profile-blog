@@ -36,6 +36,10 @@ const sideNavList: {
       label: 'Hooks原理',
       router: 'hooks',
     },
+    {
+      label: '合成事件',
+      router: 'event',
+    },
   ],
 }
 
