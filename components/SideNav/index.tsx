@@ -40,6 +40,10 @@ const sideNavList: {
       label: '合成事件',
       router: 'event',
     },
+    {
+      label: '懒加载',
+      router: 'lazy-loading',
+    },
   ],
 }
 

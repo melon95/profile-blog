@@ -1,0 +1,230 @@
+---
+title: 懒加载
+keyword: React 懒加载 React.lazy
+---
+
+# 懒加载
+
+懒加载是利用 `import` 和 `React.lazy` 这两个语法来实现的：
+
+- `import` 负责异步加载
+- `React.lazy` 负责处理加载前后的状态展示
+
+如果为了追求更好的用户体验，还能通过 `React.Suspense` 来处理加载中的状态，所以最终的组合是：
+
+- `React.Suspense` 指定懒加载未完成时的兜底状态
+- `React.lazy` 处理异步加载完成后的状态展示
+- `import` 赋值异步加载
+
+## lazy
+
+`React.lazy` 的源码就是返回一个对象：
+
+```js
+function lazy(ctor) {
+  var payload = {
+    // 异步加载的状态
+    _status: Uninitialized,
+    // 传入的import函数
+    _result: ctor,
+  }
+  var lazyType = {
+    $$typeof: REACT_LAZY_TYPE,
+    _payload: payload,
+    _init: lazyInitializer,
+  }
+  return lazyType
+}
+```
+
+### 处理 lazyType 对象
+
+`import` 函数的处理需要等到 render 阶段的 `beginWork` 中
+
+```js
+function mountLazyComponent(
+  _current,
+  workInProgress,
+  elementType,
+  renderLanes,
+) {
+  let props = workInProgress.pendingProps
+  let lazyComponent = elementType
+  let payload = lazyComponent._payload
+  let init = lazyComponent._init
+  // 执行 import 函数
+  let Component = init(payload)
+
+  // 第一次渲染时会抛出错误，不会执行下面的代码
+  workInProgress.type = Component
+  let resolvedTag = (workInProgress.tag = resolveLazyComponentTag(Component))
+  let resolvedProps = resolveDefaultProps(Component, props)
+  let child
+
+  switch (resolvedTag) {
+    case FunctionComponent:
+      return updateFunctionComponent(
+        null,
+        workInProgress,
+        Component,
+        resolvedProps,
+        renderLanes,
+      )
+    case ClassComponent:
+      return updateClassComponent(
+        null,
+        workInProgress,
+        Component,
+        resolvedProps,
+        renderLanes,
+      )
+  }
+}
+```
+
+### 异步加载
+
+```js
+function lazyInitializer(payload) {
+  if (payload._status === Uninitialized) {
+    var ctor = payload._result
+    var thenable = ctor()
+
+    thenable.then(
+      function (moduleObject) {
+        // 异步加载完成后，更新结果
+        // moduleObject 是一个只包含default的对象模块
+        if (payload._status === Pending || payload._status === Uninitialized) {
+          var resolved = payload
+          resolved._status = Resolved
+          resolved._result = moduleObject
+        }
+      },
+      function (error) {
+        if (payload._status === Pending || payload._status === Uninitialized) {
+          // Transition to the next state.
+          var rejected = payload
+          rejected._status = Rejected
+          rejected._result = error
+        }
+      },
+    )
+    // 第一次渲染，加载才开始
+    if (payload._status === Uninitialized) {
+      var pending = payload
+      pending._status = Pending
+      // 保存promise对象
+      pending._result = thenable
+    }
+  }
+  // 第二次渲染，加载已经完成
+  if (payload._status === Resolved) {
+    var moduleObject = payload._result
+    return moduleObject.default
+  } else {
+    // 把promise对象作为错误抛出，在render阶段中的catch中会对promise对象的错误单独处理
+    throw payload._result
+  }
+}
+```
+
+### 捕获异常
+
+当 `React.lazy` 中抛出的异常被捕获时，会被 render 中的 catch 捕获，会给抛出的 promise 对象设置 then 回调，
+
+在回调中调用 `ensureRootIsScheduled` 来再次触发 render 阶段。
+
+## Suspense
+
+在 render 阶段遇到 `Suspense` 组件会调用 `updateSuspenseComponent`
+
+```js
+function updateSuspenseComponent(current, workInProgress, renderLanes) {
+  let nextProps = workInProgress.pendingProps
+  let suspenseContext = suspenseStackCursor.current
+  let showFallback = false
+  // 子组件是否出现渲染错误，而刚好React.lazy会抛出错误
+  // 但是当第一次渲染Suspense时，还没有执行 lazy组件的render,所以不会抛出错误
+  let didSuspend = (workInProgress.flags & DidCapture) !== NoFlags
+
+  if (didSuspend || shouldRemainOnFallback(suspenseContext, current)) {
+    showFallback = true
+    workInProgress.flags &= ~DidCapture
+  }
+
+  suspenseContext = setDefaultShallowSuspenseContext(suspenseContext)
+  pushSuspenseContext(workInProgress, suspenseContext)
+  // 第一次渲染Suspense时,因为current === null&& showFallback = false
+  // 所以会进入mount分支去渲染真实的fiber，然后lazy会抛出错误，再次进入fallback的渲染
+  if (current === null) {
+    // Initial mount
+    let nextPrimaryChildren = nextProps.children
+    let nextFallbackChildren = nextProps.fallback
+
+    if (showFallback) {
+      // mount 渲染fallback
+      let fallbackFragment = mountSuspenseFallbackChildren(
+        workInProgress,
+        nextPrimaryChildren,
+        nextFallbackChildren,
+        renderLanes,
+      )
+      let primaryChildFragment = workInProgress.child
+      primaryChildFragment.memoizedState =
+        mountSuspenseOffscreenState(renderLanes)
+      workInProgress.memoizedState = SUSPENDED_MARKER
+
+      return fallbackFragment
+    } else {
+      // mount 渲染真实的fiber
+      // 会在真实的suspense和child之前添加一个Offscreen fiber
+      return mountSuspensePrimaryChildren(workInProgress, nextPrimaryChildren)
+    }
+  } else {
+    // This is an update.
+    let prevState = current.memoizedState
+    if (showFallback) {
+      // update 渲染fallback
+      let _nextFallbackChildren = nextProps.fallback
+      let _nextPrimaryChildren = nextProps.children
+      let fallbackChildFragment = updateSuspenseFallbackChildren(
+        current,
+        workInProgress,
+        _nextPrimaryChildren,
+        _nextFallbackChildren,
+        renderLanes,
+      )
+      let _primaryChildFragment2 = workInProgress.child
+      let prevOffscreenState = current.child.memoizedState
+      _primaryChildFragment2.memoizedState =
+        prevOffscreenState === null
+          ? mountSuspenseOffscreenState(renderLanes)
+          : updateSuspenseOffscreenState(prevOffscreenState, renderLanes)
+
+      _primaryChildFragment2.childLanes = getRemainingWorkInPrimaryTree(
+        current,
+        renderLanes,
+      )
+      workInProgress.memoizedState = SUSPENDED_MARKER
+      return fallbackChildFragment
+    } else {
+      // update 渲染真实的fiber
+      let _nextPrimaryChildren2 = nextProps.children
+
+      let _primaryChildFragment3 = updateSuspensePrimaryChildren(
+        current,
+        workInProgress,
+        _nextPrimaryChildren2,
+        renderLanes,
+      )
+
+      workInProgress.memoizedState = null
+      return _primaryChildFragment3
+    }
+  }
+}
+```
+
+`React.Suspense` 第一次会渲染真实的 fiber 节点，不会渲染 fallback。当 `React.lazy` 抛出错误时，会向上递归找到最近的 `React.Suspense` 并添加 flags，在 commit 的 mutation 阶段，`React.Suspense` 就会调度一个新的更新来渲染 fallback。
+
+最终当 `import` 成功后，会再次调度一个更新来渲染已经懒加载成功的组件，至此懒加载的整个流程就结束了。
