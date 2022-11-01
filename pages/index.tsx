@@ -23,6 +23,10 @@ const list = [
     label: 'Node系列',
     router: 'node',
   },
+  {
+    label: 'TypeScript系列',
+    router: 'typescript',
+  },
 ]
 
 const Home: NextPage = () => {

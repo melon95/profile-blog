@@ -42,6 +42,11 @@ const Nav = () => {
         router: '/js',
       },
       {
+        label: 'TypeScript',
+        key: 'typescript',
+        router: '/typescript',
+      },
+      {
         label: (
           <input
             onChange={switchTheme}

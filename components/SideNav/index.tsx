@@ -45,6 +45,12 @@ const sideNavList: {
       router: 'lazy-loading',
     },
   ],
+  '/typescript': [
+    {
+      label: '介绍',
+      router: '',
+    },
+  ],
 }
 
 const SideNav = () => {
