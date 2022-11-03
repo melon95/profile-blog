@@ -50,6 +50,10 @@ const sideNavList: {
       label: '介绍',
       router: '',
     },
+    {
+      label: '类型世界',
+      router: 'type-world',
+    },
   ],
 }
 

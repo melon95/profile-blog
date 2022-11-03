@@ -1,0 +1,235 @@
+---
+title: TypeScript 类型世界
+keyword: TypeScript 入门 类型
+---
+
+# 类型世界
+
+TypeScript 的类型系统复用了 JavaScript 的类型，并在此基础上进行了拓展。
+
+### 原型类型
+
+以下这些原始类型还是完全基于 `JavaScript` 种的类型
+
+1. string
+2. number
+3. boolean
+4. null
+5. undefined
+6. bigint
+7. symbol
+
+### 数组
+
+如果每个元素的类型都相同，则可以明确的指定数组的类型，比如：`string[]`，如果元素的类型可能不一样，则只能指定为 `any[]` 。
+
+### 元组
+
+元组是一种特殊的数组类型，提前确定了又多少元素以及每个元素的类型。
+
+### Object | object | {}
+
+- `Object` 是**装箱类型**，表示所有 Object 类的实例的类型（**在任何情况下，你都不应该使用这些装箱类型**）
+- `object` 表示非原始类型的类型，即数组、对象与函数类型
+- `{}` 表示任何非 null / undefined 的值
+  - 无法对这个变量进行任何赋值操作
+  - 试图访问它的任何属性时，`TypeScript` 都会编译错误，但仍然可以访问 `Object` 类型上的所有属性/方法
+
+对于 Object、object 和{}，三者都可以使⽤在 Object 类型上定义的所有属性和⽅法，这些属性和⽅法可通过 JavaScript 的原 型链隐式地使⽤；并且都不能被赋值为 undefined、null 类型。
+
+**object vs {}**：
+
+- 2、object 类型值表示**⾮原始类型**，{} 类型值可以为原始类型；
+
+### 枚举
+
+枚举允许你定义一组命名常量。使用枚举可以更轻松的记录意图或创建一组不同的案例。
+
+TypeScript 提供基于数字和字符串的枚举。
+
+```typescript
+enum Code {
+  SUCCESSED,
+  FAILED,
+}
+```
+
+枚举可分为：
+
+- 数字枚举
+- 字符串枚举
+- 常量枚举
+- 异构枚举（数字和字符串混用）
+
+##### 数字枚举
+
+```typescript
+enum Letter {
+  A = 1,
+  B,
+  C = 4,
+  D,
+}
+```
+
+如果省略初始值，则默认为 0。默认下一个值在上一个值的基础上递增，除非明确指定了值。
+
+数字枚举不仅通过 `key` 去访问 `value`，也可以通过 `value` 去访问 `key`。
+
+转换为 `JavaScript` 的代码：
+
+```javascript
+var Letter
+;(function (Letter) {
+  Letter[(Letter['A'] = 1)] = 'A'
+  Letter[(Letter['B'] = 2)] = 'B'
+  Letter[(Letter['C'] = 4)] = 'C'
+  Letter[(Letter['D'] = 5)] = 'D'
+})(Letter || (Letter = {}))
+```
+
+##### 字符串枚举
+
+每个成员都必须使用字符串或者另一个字符串枚举成员来赋值
+
+```typescript
+enum Direction {
+  Up = 'UP',
+  Down = 'DOWN',
+  Left = 'LEFT',
+  Right = 'RIGHT',
+}
+```
+
+转换为 `JavaScript` 代码：
+
+```javascript
+var Direction
+;(function (Direction) {
+  Direction['Up'] = 'UP'
+  Direction['Down'] = 'DOWN'
+  Direction['Left'] = 'LEFT'
+  Direction['Right'] = 'RIGHT'
+})(Direction || (Direction = {}))
+```
+
+##### 常量枚举
+
+在大多数情况下，枚举是一个完全有效的解决方案，但是有时要求更严格。为了避免在访问枚举值时产生额外生成的代码和额外间接寻址的成本，可以使用常量枚举。
+
+常量枚举只能使用常量枚举表达式，与常规枚举不同，它们在编译过程中被完全删除。
+
+```typescript
+const enum Enum {
+  A = 1,
+  B = A * 2,
+}
+
+if (Enum.B === 2) {
+  console.log(2)
+}
+```
+
+转换为 `JavaScript` 代码：
+
+```javascript
+if (2 /* Enum.B */ === 2) {
+  console.log(2)
+}
+```
+
+##### 异构枚举
+
+从技术上讲，枚举可以与字符串和数字成员混合使用，但不清楚为什么要这样做：
+
+```typescript
+enum Enum {
+  No = 0,
+  Yes = 'YES',
+}
+```
+
+转换为 `JavaScript` 代码：
+
+```javascript
+var Enum
+;(function (Enum) {
+  Enum[(Enum['No'] = 0)] = 'No'
+  Enum['Yes'] = 'YES'
+})(Enum || (Enum = {}))
+```
+
+### any
+
+当你不希望类型检查器对值进行检查，而是直接让值通过编译阶段的检查时，可以把类型设置为 `any` 。
+
+当一个值的类型 `any` 时，您可以访问它的任何属性（这又将是 `any`），像函数一样调用它，将它分配给（或从）任何类型的值。
+
+所有类型都能被赋值给 any ，any 类型也能赋值给所有类型。
+
+### unknown
+
+`unknown` 和 `any` 一样都是最顶层的类型，但相比于 `any` 会更安全，在很多情况下, 我们可以使用 `unknow` 来替代 `any` 。
+
+与 `any` 一样，所有类型都可以赋值给 `unknown`，但只能将 `unknown` 类型的变量赋值给 `any` 和 `unknown` 。
+
+### void
+
+表示没有任何类型。 当一个函数没有返回值时，你通常会见到其返回值类型是 `void`
+
+```typescript
+function log(msg: string): viod {
+  console.log(msg)
+}
+```
+
+### never
+
+`never` 表示永远不会被观察到的值。在一个返回类型中，这意味着函数抛出一个异常或终止程序的执行。
+
+```typescript
+function fail(msg: string): never {
+  throw new Error(msg)
+}
+```
+
+当 `TypeScript` 确定联合类型中没有剩余内容时，也会出现 `never`
+
+```typescript
+function fn(x: string | number) {
+  if (typeof x === 'string') {
+    // do something
+  } else if (typeof x === 'number') {
+    // do something else
+  } else {
+    x // has type 'never'!
+  }
+}
+```
+
+`never` 可以赋值给所有类型，但不能把任何类型赋值给 `never` ，与 `un known` 相反。
+
+### 联合类型
+
+联合类型是由两个或多个其他类型组成的类型，表示可能是这些类型中的任何一种。
+
+```typescript
+function printId(id: number | string) {
+  console.log('Your ID is: ' + id)
+}
+```
+
+### 交叉类型
+
+接口允许我们通过扩展它们来从其他类型构建新类型。`TypeScript` 提供了一种称为交叉类型的构造，主要用于组合现有对象类型。
+
+```typescript
+interface Colorful {
+  color: string
+}
+interface Circle {
+  radius: number
+}
+
+type ColorfulCircle = Colorful & Circle
+```

@@ -1,3 +1,8 @@
+---
+title: TypeScript
+keyword: TypeScript 入门
+---
+
 # TypeScript
 
 随着 TypeScript 普及度越来越高，使用 TypeScript 开发的项目也是越来越多，TypeScript 也是越来越重要。
@@ -6,7 +11,7 @@
 
 该系列只涉及日常开发会使用的部分特性，不会深挖 TypeScript 的技巧和原理。大致可分为以下部分：
 
-- [ ] 类型世界
+- [x] 类型世界
 - [ ] 函数和 Class 中的类型
 - [ ] 泛型
 - [ ] 类型编程工具
