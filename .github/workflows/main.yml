@@ -11,7 +11,7 @@ jobs:
       with:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
-        passphrase: ${{ secrets.PASSWORD }}
+        passphrase: ${{ secrets.PASSPHRASE }}
         script: |
           cd repository/portal-blog
           git pull
