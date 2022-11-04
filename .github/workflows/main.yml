@@ -1,0 +1,20 @@
+name: deploy
+on: [push]
+jobs:
+
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    steps:
+    - name: remote ssh
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        passphrase: ${{ secrets.PASSPHRASE }}
+        script: |
+          cd repository/portal-blog
+          git pull
+          docker build -t next-blog:latest .
+          docker kill next-blog
+          docker-compose up -d
