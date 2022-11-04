@@ -54,6 +54,10 @@ const sideNavList: {
       label: '类型世界',
       router: 'type-world',
     },
+    {
+      label: '函数和 Class 类型',
+      router: 'function',
+    },
   ],
 }
 

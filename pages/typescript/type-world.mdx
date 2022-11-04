@@ -1,6 +1,6 @@
 ---
 title: TypeScript 类型世界
-keyword: TypeScript 入门 类型
+keyword: TypeScript 入门
 ---
 
 # 类型世界
@@ -169,13 +169,13 @@ var Enum
 
 ### unknown
 
-`unknown` 和 `any` 一样都是最顶层的类型，但相比于 `any` 会更安全，在很多情况下, 我们可以使用 `unknow` 来替代 `any` 。
+`unknown` 和 `any` 一样都是最顶层的类型，但相比于 `any` 会更安全，因为对 `unknown` 做任何事情都是不合法的。在很多情况下, 我们可以使用 `unknow` 来替代 `any` 。
 
 与 `any` 一样，所有类型都可以赋值给 `unknown`，但只能将 `unknown` 类型的变量赋值给 `any` 和 `unknown` 。
 
 ### void
 
-表示没有任何类型。 当一个函数没有返回值时，你通常会见到其返回值类型是 `void`
+表示不返回值的函数的返回值。 当一个函数没有返回值时，你通常会见到其返回值类型是 `void`。
 
 ```typescript
 function log(msg: string): viod {
