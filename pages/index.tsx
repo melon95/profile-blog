@@ -17,7 +17,7 @@ const list = [
   },
   {
     label: 'JavaScript系列',
-    router: 'js',
+    router: 'javascript',
   },
   {
     label: 'Node系列',

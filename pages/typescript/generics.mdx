@@ -1,0 +1,129 @@
+---
+title: TypeScript 泛型和类型工具
+keyword: TypeScript 入门 泛型
+---
+
+# 泛型和类型工具
+
+## 泛型
+
+泛型主要是用于类型工具中，使之能够处理多种类型，而不是为每个类型都定一个工具或者使用 `any`：
+
+```typescript
+function identity<T>(arg: T): T {
+  return arg
+}
+```
+
+无论传入 `identity` 函数的参数是什么类型，返回值的返回同样的类型(T 只是一个标识符，可以使用任何合法的标识符)。
+
+部分情况下，函数的参数具有某种特定的结构， 这个时候泛型不再能接受所有的类型，而是需要约束泛型实现特定的结构：
+
+```typescript
+interface Lengthwise {
+  length: number
+}
+
+function loggingIdentity<T extends Lengthwise>(arg: T): T {
+  console.log(arg.length)
+  return arg
+}
+```
+
+## 类型工具
+
+`TypeScript` 内置了许多有用的[工具](https://www.typescriptlang.org/docs/handbook/utility-types.html)，内部都是通过泛型来实现的，比如：
+
+**Partial\<Type\>**
+
+把 `Type` 所有的属性都变成可选的
+
+```typescript
+type MyPartial<T> = {
+  [key in keyof T]?: T[key]
+}
+```
+
+**Required\<Type\>**
+
+与 `Partial` 相反，`Required` 是把 `Type` 的所有属性都变成必选的
+
+```typescript
+type MyRequired<T> = {
+  [key in keyof T]-?: T[key]
+}
+```
+
+**Readonly\<Type\>**
+
+把 `Type` 的所有属性都变成只读
+
+```typescript
+type MyReadonly<T> = {
+  readonly [key in keyof T]: T[key]
+}
+```
+
+**Record\<Keys, Type\>**
+
+构造一个对象类型，其属性键为键，其属性值为类型,用于将一个类型的属性映射到另一个类型。
+
+```typescript
+type MyRecord<K extends string | number | symbol, T> = {
+  [P in K]: T
+}
+```
+
+**Pick\<Type, Keys\>**
+
+过滤 `Type` 中 `Keys` 中存在的键，并返回
+
+```typescript
+type MyPick<T, K extends keyof T> = {
+  [P in K]: T[P]
+}
+```
+
+**Omit\<Type, Keys\>**
+
+与 `Pick` 相反，`Omit` 是返回移除 `Keys` 后的 `Type`
+
+```typescript
+type MyOmit<T, K> = {
+  [P in Exclude<keyof T, K>]: T[P]
+}
+```
+
+**Exclude\<UnionType, ExcludedMembers\>**
+
+从 `UnionType` 中移除 `ExcludedMembers` 中所有的成员
+
+```typescript
+type T0 = Exclude<'a' | 'b' | 'c', 'a'>
+```
+
+**Extract\<Type, Union\>**
+
+从 `Type` 和 `Union` 中提取公共成员
+
+```typescript
+type T0 = Extract<'a' | 'b' | 'c', 'a' | 'f'>
+```
+
+**NonNullable\<Type\>**
+
+从 `Type` 中移除 `null` 和 `undefined`
+
+```typescript
+type MyNonNullable<T> = Exclude<T, null | undefined>
+```
+
+**ReturnType\<Type\>**
+
+获取函数的返回类型
+
+**Parameters\<Type\>**
+
+从函数类型 `Type` 的参数中使用的类型构造元组类型。
+
+更多的内置工具请查阅官网。

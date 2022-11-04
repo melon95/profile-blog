@@ -37,9 +37,9 @@ const Nav = () => {
         router: '/node',
       },
       {
-        label: 'JS',
-        key: 'js',
-        router: '/js',
+        label: 'JavaScript',
+        key: 'javascript',
+        router: '/javascript',
       },
       {
         label: 'TypeScript',

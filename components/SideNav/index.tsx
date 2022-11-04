@@ -58,6 +58,10 @@ const sideNavList: {
       label: '函数和 Class 类型',
       router: 'function',
     },
+    {
+      label: '泛型和类型工具',
+      router: 'generics',
+    },
   ],
 }
 
