@@ -7,7 +7,7 @@ keyword: TypeScript 入门
 
 TypeScript 的类型系统复用了 JavaScript 的类型，并在此基础上进行了拓展。
 
-### 原型类型
+## 原型类型
 
 以下这些原始类型还是完全基于 `JavaScript` 种的类型
 
@@ -19,15 +19,15 @@ TypeScript 的类型系统复用了 JavaScript 的类型，并在此基础上进
 6. bigint
 7. symbol
 
-### 数组
+## 数组
 
 如果每个元素的类型都相同，则可以明确的指定数组的类型，比如：`string[]`，如果元素的类型可能不一样，则只能指定为 `any[]` 。
 
-### 元组
+## 元组
 
 元组是一种特殊的数组类型，提前确定了又多少元素以及每个元素的类型。
 
-### Object | object | {}
+## Object | object | {}
 
 - `Object` 是**装箱类型**，表示所有 Object 类的实例的类型（**在任何情况下，你都不应该使用这些装箱类型**）
 - `object` 表示非原始类型的类型，即数组、对象与函数类型
@@ -41,7 +41,7 @@ TypeScript 的类型系统复用了 JavaScript 的类型，并在此基础上进
 
 - 2、object 类型值表示**⾮原始类型**，{} 类型值可以为原始类型；
 
-### 枚举
+## 枚举
 
 枚举允许你定义一组命名常量。使用枚举可以更轻松的记录意图或创建一组不同的案例。
 
@@ -61,7 +61,7 @@ enum Code {
 - 常量枚举
 - 异构枚举（数字和字符串混用）
 
-##### 数字枚举
+### 数字枚举
 
 ```typescript
 enum Letter {
@@ -88,7 +88,7 @@ var Letter
 })(Letter || (Letter = {}))
 ```
 
-##### 字符串枚举
+### 字符串枚举
 
 每个成员都必须使用字符串或者另一个字符串枚举成员来赋值
 
@@ -113,7 +113,7 @@ var Direction
 })(Direction || (Direction = {}))
 ```
 
-##### 常量枚举
+### 常量枚举
 
 在大多数情况下，枚举是一个完全有效的解决方案，但是有时要求更严格。为了避免在访问枚举值时产生额外生成的代码和额外间接寻址的成本，可以使用常量枚举。
 
@@ -138,7 +138,7 @@ if (2 /* Enum.B */ === 2) {
 }
 ```
 
-##### 异构枚举
+### 异构枚举
 
 从技术上讲，枚举可以与字符串和数字成员混合使用，但不清楚为什么要这样做：
 
@@ -159,7 +159,7 @@ var Enum
 })(Enum || (Enum = {}))
 ```
 
-### any
+## any
 
 当你不希望类型检查器对值进行检查，而是直接让值通过编译阶段的检查时，可以把类型设置为 `any` 。
 
@@ -167,13 +167,13 @@ var Enum
 
 所有类型都能被赋值给 any ，any 类型也能赋值给所有类型。
 
-### unknown
+## unknown
 
 `unknown` 和 `any` 一样都是最顶层的类型，但相比于 `any` 会更安全，因为对 `unknown` 做任何事情都是不合法的。在很多情况下, 我们可以使用 `unknow` 来替代 `any` 。
 
 与 `any` 一样，所有类型都可以赋值给 `unknown`，但只能将 `unknown` 类型的变量赋值给 `any` 和 `unknown` 。
 
-### void
+## void
 
 表示不返回值的函数的返回值。 当一个函数没有返回值时，你通常会见到其返回值类型是 `void`。
 
@@ -183,7 +183,7 @@ function log(msg: string): viod {
 }
 ```
 
-### never
+## never
 
 `never` 表示永远不会被观察到的值。在一个返回类型中，这意味着函数抛出一个异常或终止程序的执行。
 
@@ -209,7 +209,7 @@ function fn(x: string | number) {
 
 `never` 可以赋值给所有类型，但不能把任何类型赋值给 `never` ，与 `un known` 相反。
 
-### 联合类型
+## 联合类型
 
 联合类型是由两个或多个其他类型组成的类型，表示可能是这些类型中的任何一种。
 
@@ -219,7 +219,7 @@ function printId(id: number | string) {
 }
 ```
 
-### 交叉类型
+## 交叉类型
 
 接口允许我们通过扩展它们来从其他类型构建新类型。`TypeScript` 提供了一种称为交叉类型的构造，主要用于组合现有对象类型。
 
@@ -234,7 +234,58 @@ interface Circle {
 type ColorfulCircle = Colorful & Circle
 ```
 
-## 交叉类型遇到同名属性时，会自动合并处理，新的类型会同时满足所有的同名属性的类型：
+交叉类型遇到同名属性时，会自动合并处理，新的类型会同时满足所有的同名属性的类型：
 
 - 基础类型：基础类型本身或 `never`
 - 非基础类型属性: 非基础类型字段合并
+
+￼## 类型别名
+
+*类型别名*就是任何类型的名称，可重复以相同的名字引用，类型别名的语法是：
+
+```typescript
+type Point = {
+  x: number
+  y: number
+}
+
+// Exactly the same as the earlier example
+function printCoord(pt: Point) {
+  console.log("The coordinate's x value is " + pt.x)
+  console.log("The coordinate's y value is " + pt.y)
+}
+
+printCoord({ x: 100, y: 100 })
+```
+
+## 接口声明
+
+接口声明是命名对象类型的另一种方式。
+
+```typescript
+type Point = {
+  x: number
+  y: number
+}
+
+// Exactly the same as the earlier example
+function printCoord(pt: Point) {
+  console.log("The coordinate's x value is " + pt.x)
+  console.log("The coordinate's y value is " + pt.y)
+}
+
+printCoord({ x: 100, y: 100 })
+```
+
+`TypeScript` 只关心我们传递给 `printCoord` 的值的结构——它只关心它是否具有预期的属性。只关心类型的结构和功能是我们将 `TypeScript` 称为结构类型类型系统的原因。
+
+### 接口声明与类型别名的区别
+
+- 类型拓展： `interface` 使用 `extends` ，而 `type` 使用交叉类型(&)
+  - `interface` 和 `type` 可以相互拓展
+    - `interface extends type`
+    - `type & interface`
+- 声明合并：同名的 `interface` 会自动合并
+- 用途：`interface` 只用于声明对象的形状，而 `type` 则用于类型编程以及重命名类型（原始类型等）
+  - `interface` 与 `type` 都可以描述对象类型、函数类型、Class 类型，但 `interface` 无法像 `type` 那样表达元组、一组联合类型等等
+  - `interface` 无法使用映射类型等类型工具，也就意味着在类型编程场景中我们还是应该使用 `type`
