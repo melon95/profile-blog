@@ -64,7 +64,7 @@ const sideNavList: {
     },
     {
       label: '类型编程工具',
-      router: 'type-code',
+      router: 'type-programme',
     },
   ],
 }
