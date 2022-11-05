@@ -28,7 +28,7 @@ const Layout = (props: IProps) => {
             <div className="flex-auto">
               <div
                 id="write"
-                className={`${style['blog-container']} m-auto py-16 prose dark:prose-invert`}>
+                className={`${style['blog-container']} m-auto py-16 prose dark:prose-invert break-words`}>
                 {children}
               </div>
             </div>

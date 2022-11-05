@@ -66,6 +66,10 @@ const sideNavList: {
       label: '类型编程工具',
       router: 'type-programme',
     },
+    {
+      label: '类型声明',
+      router: 'type-declare',
+    },
   ],
 }
 
