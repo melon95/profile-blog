@@ -62,6 +62,10 @@ const sideNavList: {
       label: '泛型和类型工具',
       router: 'generics',
     },
+    {
+      label: '类型编程工具',
+      router: 'type-code',
+    },
   ],
 }
 

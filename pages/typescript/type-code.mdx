@@ -1,0 +1,376 @@
+---
+title: TypeScript 类型编程工具
+keyword: TypeScript 入门 类型编程工具
+---
+
+# 类型编程工具
+
+`TypeScript` 的类型系统非常强大，因为它允许*用其他类型来表达类型*。这个想法最简单的形式是泛型，我们实际上有各种各样的*类型运算符*可供使用。也可以用我们已经拥有的值来表达类型。
+
+## 类型操作
+
+### keyof 类型
+
+`keyof` 类型操作符接受一个对象类型，返回一个对象类型键的字符串或数字的联合类型：
+
+```typescript
+type Point = {
+  x: number
+  y: number
+}
+type P = keyof Point // x | y
+```
+
+`keyof` 再与映射类型结合时变得很有用。
+
+### typeof 类型
+
+`TypeScript` 添加 `typeof` 类型操作符是方便直接拿到变量或属性的类型：
+
+```typescript
+let s = 'hello'
+let n: typeof s // n: string
+```
+
+这对原始类型来说不是很有用，但是与其他的类型运算符结合，可以实现很多模式：
+
+```typescript
+function f() {
+  return { x: 10, y: 3 }
+}
+// 'f' refers to a value, but is being used as a type here. Did you mean 'typeof f'?
+type P = ReturnType<f>
+
+type P1 = ReturnType<typeof f>
+// P1 = {
+//    x: number;
+//    y: number;
+// }
+```
+
+### 索引访问类型
+
+索引访问类型用于在类型上访问一个特定的属性：
+
+```typescript
+type Person = { age: number; name: string; alive: boolean }
+type Age = Person['age'] // number
+```
+
+索引类型本身就是一种类型，因此我们可以完全使用联合`keyof`、 或其他类型：
+
+```typescript
+type I1 = Person['age' | 'name'] // string | number
+```
+
+还可以使用 `number` 获取数组元素的类型：
+
+```typescript
+const MyArray = [
+  { name: 'Alice', age: 15 },
+  { name: 'Bob', age: 23 },
+  { name: 'Eve', age: 38 },
+]
+
+type Person = typeof MyArray[number]
+// type Person = {
+//     name: string;
+//     age: number;
+// }
+```
+
+### 条件类型
+
+条件类型帮助描述输入类型和输出类型之间的关系
+
+```typescript
+type isString<T> = T extends string ? 1 : 2
+
+type T = isString<'typescript'> // 1
+```
+
+条件类型类似于 `JavaScript` 中的三元表达式 `condition ? trueExpression : falseExpression`：
+
+```typescript
+  SomeType extends OtherType ? TrueType : FalseType
+```
+
+#### 推导
+
+条件类型提供了一种方法，可以使用 `infer` 关键字从我们在 `TrueType` 中比较的类型中进行推断：
+
+```typescript
+type Flatten<T> = T extends Array<infer Item> ? Item : T
+```
+
+可以使用 `infer` 开发一些使用的工具类型：
+
+```typescript
+type GetReturnType<T> = T extends (...args: any[]) => infer R : R : T
+
+// 也可以递归的执行
+type DeepPromiseValueType2<T> =
+    T extends Promise<infer ValueType>
+        ? DeepPromiseValueType2<ValueType>
+        : T;
+```
+
+#### 分布式条件类型
+
+当条件类型作用于泛型类型时，它们在给定联合类型时变得可分配。例如：
+
+```typescript
+type ToArray<Type> = Type extends any ? Type[] : never
+// string[] | number[]
+type StrArrOrNumArr = ToArray<string | number>
+```
+
+当传入联合类型时，会分别把联合类型的每个类型都传入，再联合返回的类型。
+
+分配时默认的行为，但是有时候需要避免这种默认行为，可以通过使用方括号包裹泛型：
+
+```typescript
+type ToArrayNonDist<Type> = [Type] extends [any] ? Type[] : never
+// (stinrg | number)[]
+type StrArrOrNumArr = ToArrayNonDist<string | number>
+```
+
+### 映射类型
+
+映射类型基于索引访问类型的语法，用于声明未提前声明的的属性类型：
+
+```typescript
+type obj = {
+  [key: string]: unknown
+}
+```
+
+映射类型是一种通用类型，一般配合类型 `keyof` 和 修饰符 `readonly` 、`?` 来遍历键以创建类型：
+
+```typescript
+type OptionsFlags<Type> = {
+  readonly [Property in keyof Type]?: boolean
+}
+```
+
+还可以使用映射类型中的 `as` 子句重新映射映射类型中的键：
+
+```typescript
+// Remove the 'kind' property
+type RemoveKindField<Type> = {
+  [Property in keyof Type as Exclude<Property, 'kind'>]: Type[Property]
+}
+
+interface Circle {
+  kind: 'circle'
+  radius: number
+}
+
+type KindlessCircle = RemoveKindField<Circle>
+
+type Getters<Type> = {
+  [Property in keyof Type as `get${Capitalize<
+    string & Property
+  >}`]: () => Type[Property]
+}
+
+interface Person {
+  name: string
+  age: number
+  location: string
+}
+
+type LazyPerson = Getters<Person>
+```
+
+### 模板字符串类型
+
+模板字符串类型基于 `JavaScript` 的字符串模板，用于拼接内容并返回一个新的字符串字面量类型，并且可以通过联合类型拓展到多个字符串：
+
+```typescript
+type World = 'world'
+// "hello world"
+type Greeting = `hello ${World}`
+
+type EmailLocaleIDs = 'welcome_email' | 'email_heading'
+type FooterLocaleIDs = 'footer_title' | 'footer_sendoff'
+// "welcome_email_id" | "email_heading_id" | "footer_title_id" | "footer_sendoff_id"
+type AllLocaleIDs = `${EmailLocaleIDs | FooterLocaleIDs}_id`
+```
+
+`TypeScript` 为了帮助进行字符串操作，内置了一组专用于处理字符串操作的类型
+
+#### Uppercase\<StringType\>
+
+将字符串的每个字符变成大写
+
+```typescript
+type Greeting = 'Hello, world'
+// HELLO, WORLD
+type ShoutGreeting = Uppercase<Greeting>
+```
+
+#### Lowercase\<StringType\>
+
+将字符串的每个字符变成小写
+
+```typescript
+type Greeting = 'Hello, world'
+// hello, world
+type QuietGreeting = Lowercase<Greeting>
+```
+
+#### Capitalize\<StringType\>
+
+将字符串的第一个字符变成大写
+
+```typescript
+type LowercaseGreeting = 'hello, world'
+// Hello, world
+type Greeting = Capitalize<LowercaseGreeting>
+```
+
+#### Uncapitalize\<StringType\>
+
+将字符串的第一个字符变成小写
+
+```typescript
+type LowercaseGreeting = 'HELLO, WORLD'
+// hELLO, WORLD
+type Greeting = Uncapitalize<LowercaseGreeting>
+```
+
+## 类型保护
+
+`TypeScript` 中提供了非常强大的类型推导能力，它会随着你的代码逻辑不断尝试收窄类型，这一能力称之为**类型的控制流分析**（也可以简单理解为类型推导）。
+
+### typeof
+
+```typescript
+function test(a: string | number): string {
+  if (typeof a === 'number') {
+    return a * 10 + ''
+  }
+  return a
+}
+```
+
+### in
+
+```typescript
+type Fish = { swim: () => void }
+type Bird = { fly: () => void }
+
+function move(animal: Fish | Bird) {
+  if ('swim' in animal) {
+    return animal.swim()
+  }
+  return animal.fly()
+}
+```
+
+### instanceof
+
+```typescript
+function logValue(x: Date | string) {
+  if (x instanceof Date) {
+    console.log(x.toUTCString())
+  } else {
+    console.log(x.toUpperCase())
+  }
+}
+```
+
+### is
+
+```typescript
+function isFish(pet: Fish | Bird): pet is Fish {
+  return (pet as Fish).swim !== undefined
+}
+// Both calls to 'swim' and 'fly' are now okay.
+let pet = getSmallPet()
+
+if (isFish(pet)) {
+  pet.swim()
+} else {
+  pet.fly()
+}
+```
+
+### 联合类型
+
+出于某种动机，假设我们正在尝试对圆形和正方形等形状进行编码。圆记录它们的半径，正方形记录它们的边长。我们将使用一个名为的字段`kind`来判断我们正在处理的形状。这是定义`Shape`.
+
+```typescript
+interface Shape {
+  kind: 'circle' | 'square' // 区分圆形和正方形
+  radius?: number
+  sideLength?: number
+}
+```
+
+然后编写一个 `getArea` 函数来计算面积：
+
+```typescript
+function getArea(shape: Shape) {
+  if (shape.kind === 'circle') {
+    // radius is possibly 'undefined'.
+    return Math.PI * shape.radius ** 2
+  } else {
+    // sideLength is possibly 'undefined'.
+    return shaoe.sideLength ** 2
+  }
+}
+```
+
+`TypeScript` 会提示 `radius` 和 `sideLength` 可能为 `undefined`，此时虽然可以通过非空断言来解决，但是不够优雅。我们可以把 `Shape` 拆分来优雅的解决这个问题：
+
+```typescript
+interface Circle {
+  kind: 'circle'
+  radius: number
+}
+
+interface Square {
+  kind: 'square'
+  sideLength: number
+}
+
+type Shape = Circle | Square
+```
+
+## 类型断言
+
+### 非空断言
+
+从类型中移除 `null` 和 `undefined`
+
+```typescript
+function liveDangerously(x?: number | null) {
+  // No error
+  console.log(x!.toFixed())
+}
+```
+
+### 确定赋值断言
+
+```typescript
+let x!: number // 在x后面添加!
+initialize()
+// 可以避免Variable 'x' is used before being assigned.(2454)
+console.log(2 * x) // Ok
+
+function initialize() {
+  x = 10
+}
+```
+
+### as
+
+```typescript
+interface Value {
+  value: string
+}
+
+const value: Value = {} as Value
+```

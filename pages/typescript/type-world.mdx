@@ -233,3 +233,8 @@ interface Circle {
 
 type ColorfulCircle = Colorful & Circle
 ```
+
+## 交叉类型遇到同名属性时，会自动合并处理，新的类型会同时满足所有的同名属性的类型：
+
+- 基础类型：基础类型本身或 `never`
+- 非基础类型属性: 非基础类型字段合并
