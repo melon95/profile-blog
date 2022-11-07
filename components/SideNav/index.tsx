@@ -67,6 +67,10 @@ const sideNavList: {
       router: 'type-programme',
     },
     {
+      label: '结构化类型系统',
+      router: 'structural-typing',
+    },
+    {
       label: '类型声明',
       router: 'type-declare',
     },

@@ -1,0 +1,41 @@
+---
+title: 结构化类型系统
+keyword: TypeScript 入门 结构化类型系统
+---
+
+# 结构化类型系统
+
+`TypeScript` 的核心原则之一是类型检查侧重于值的形状，这被称为**结构化类型系统**。
+
+在结构化类型系统中，如果两个对象具有相同的形状，则认为它们是同一类型
+
+```typescript
+interface Point {
+  x: number
+  y: number
+}
+
+function logPoint(p: Point) {
+  console.log(`${p.x}, ${p.y}`)
+}
+
+// logs "12, 26"
+const point = { x: 12, y: 26 }
+logPoint(point)
+```
+
+变量 `point` 永远不会被声明为 `Point` 类型，然而 `TypeScript` 在类型检查的时候比较 `point` 和 `Point` 的形状，它们很显然具有相同的形状，所以代码检查通过。
+
+**形状匹配只需要匹配对象字段的子集**，即 `point`可以多字段，但是不能少字段
+
+```typescript
+const point3 = { x: 12, y: 26, z: 89 }
+logPoint(point3) // logs "12, 26"
+
+const rect = { x: 33, y: 3, width: 30, height: 80 }
+logPoint(rect) // logs "33, 3"
+
+const color = { hex: '#187ABF' }
+// Argument of type '{ hex: string; }' is not assignable to parameter of type 'Point'
+logPoint(color)
+```
