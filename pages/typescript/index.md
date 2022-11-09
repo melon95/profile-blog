@@ -19,4 +19,4 @@ keyword: TypeScript 入门
 - [x] 命名空间
 - [x] 配置文件
 - [x] React 中的 TypeScript 类型
-- [ ] 推荐工具
+- [x] 工具和资料

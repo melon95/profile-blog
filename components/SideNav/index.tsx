@@ -82,6 +82,10 @@ const sideNavList: {
       label: 'React 中的 TypeScript 类型',
       router: 'react',
     },
+    {
+      label: '工具和资料',
+      router: 'tools',
+    },
   ],
 }
 
