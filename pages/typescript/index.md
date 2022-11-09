@@ -17,5 +17,6 @@ keyword: TypeScript 入门
 - [x] 类型编程工具
 - [x] 结构化类型系统
 - [x] 命名空间
-- [ ] 配置文件和 React
+- [x] 配置文件
+- [x] React 中的 TypeScript 类型
 - [ ] 推荐工具

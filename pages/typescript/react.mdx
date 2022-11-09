@@ -1,0 +1,192 @@
+---
+title: React 中的 TypeScript 类型
+keyword: TypeScript 入门 React
+---
+
+# React 中的 TypeScript 类型
+
+由于 `React` 是通过 `Flow` 来实现的静态类型检查，所以额外提供了 [`@types/react`](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react) 这个包来实现 `TypeScript` 的静态类型检查。在日常开发中常用的类型可以分为几类：
+
+- 组件相关
+- DOM 元素相关
+- DOM 事件相关
+
+## 组件相关
+
+**ReactChild**
+
+```typescript
+type ReactChild = ReactElement | string | number
+```
+
+**ReactText**
+
+```typescript
+type ReactText = string | number
+```
+
+**ReactNode**
+
+```typescript
+type ReactNode =
+  | ReactElement
+  | string
+  | number
+  | ReactFragment
+  | ReactPortal
+  | boolean
+  | null
+  | undefined
+```
+
+**FC**
+
+```typescript
+type FC<P = {}> = FunctionComponent<P>
+
+interface FunctionComponent<P = {}> {
+  (props: P, context?: any): ReactElement<any, any> | null
+  propTypes?: WeakValidationMap<P> | undefined
+  contextTypes?: ValidationMap<any> | undefined
+  defaultProps?: Partial<P> | undefined
+  displayName?: string | undefined
+}
+```
+
+**CSSProperties**
+
+```typescript
+interface CSSProperties extends CSS.Properties<string | number> {}
+```
+
+## DOM 元素相关
+
+**Input**
+
+```typescript
+interface HTMLInputElement extends HTMLElement {}
+interface InputHTMLAttributes<T> extends HTMLAttributes<T> {}
+```
+
+**Div**
+
+```typescript
+interface HTMLDivElement extends HTMLElement {}
+```
+
+**Form**
+
+```typescript
+interface HTMLFormElement extends HTMLElement {}
+
+interface FormHTMLAttributes<T> extends HTMLAttributes<T> {
+  acceptCharset?: string | undefined
+  action?: string | undefined
+  autoComplete?: string | undefined
+  encType?: string | undefined
+  method?: string | undefined
+  name?: string | undefined
+  noValidate?: boolean | undefined
+  target?: string | undefined
+  rel?: string | undefined
+}
+```
+
+**H1~H6**
+
+```typescript
+interface HTMLHeadElement extends HTMLElement {}
+```
+
+**Select**
+
+```typescript
+interface HTMLSelectElement extends HTMLElement {}
+interface SelectHTMLAttributes<T> extends HTMLAttributes<T> {
+  autoComplete?: string | undefined
+  autoFocus?: boolean | undefined
+  disabled?: boolean | undefined
+  form?: string | undefined
+  multiple?: boolean | undefined
+  name?: string | undefined
+  required?: boolean | undefined
+  size?: number | undefined
+  value?: string | ReadonlyArray<string> | number | undefined
+  onChange?: ChangeEventHandler<T> | undefined
+}
+```
+
+**Button**
+
+```typescript
+interface HTMLButtonElement extends HTMLElement {}
+interface ButtonHTMLAttributes<T> extends HTMLAttributes<T> {
+  autoFocus?: boolean | undefined
+  disabled?: boolean | undefined
+  form?: string | undefined
+  formAction?: string | undefined
+  formEncType?: string | undefined
+  formMethod?: string | undefined
+  formNoValidate?: boolean | undefined
+  formTarget?: string | undefined
+  name?: string | undefined
+  type?: 'submit' | 'reset' | 'button' | undefined
+  value?: string | ReadonlyArray<string> | number | undefined
+}
+```
+
+## 原生事件相关
+
+### 事件类型
+
+```typescript
+// 动画事件
+interface AnimationEvent<T = Element>
+// 剪切板事件
+ interface ClipboardEvent<T = Element>
+// 用户间接输入事件：输入法
+interface CompositionEvent<T = Element>
+// 拖拽事件
+interface DragEvent<T = Element>
+// 焦点事件
+interface FocusEvent<T = Element>
+// 键盘事件
+interface KeyboardEvent<T = Element>
+// 鼠标事件
+interface MouseEvent<T = Element>
+// 触摸事件
+interface TouchEvent<T = Element>
+// 过渡事件
+interface TransitionEvent<T = Element>
+// UI事件
+interface UIEvent<T = Element>
+// 鼠标滚轮事件
+interface WheelEvent<T = Element>
+// 变动事件
+interface ChangeEvent<T = Element>
+```
+
+### 事件回调函数类型
+
+```typescript
+type EventHandler<E extends SyntheticEvent<any>> = {
+  bivarianceHack(event: E): void
+}['bivarianceHack']
+
+type ReactEventHandler<T = Element> = EventHandler<SyntheticEvent<T>>
+
+type ClipboardEventHandler<T = Element> = EventHandler<ClipboardEvent<T>>
+type CompositionEventHandler<T = Element> = EventHandler<CompositionEvent<T>>
+type DragEventHandler<T = Element> = EventHandler<DragEvent<T>>
+type FocusEventHandler<T = Element> = EventHandler<FocusEvent<T>>
+type FormEventHandler<T = Element> = EventHandler<FormEvent<T>>
+type ChangeEventHandler<T = Element> = EventHandler<ChangeEvent<T>>
+type KeyboardEventHandler<T = Element> = EventHandler<KeyboardEvent<T>>
+type MouseEventHandler<T = Element> = EventHandler<MouseEvent<T>>
+type TouchEventHandler<T = Element> = EventHandler<TouchEvent<T>>
+type PointerEventHandler<T = Element> = EventHandler<PointerEvent<T>>
+type UIEventHandler<T = Element> = EventHandler<UIEvent<T>>
+type WheelEventHandler<T = Element> = EventHandler<WheelEvent<T>>
+type AnimationEventHandler<T = Element> = EventHandler<AnimationEvent<T>>
+type TransitionEventHandler<T = Element> = EventHandler<TransitionEvent<T>>
+```

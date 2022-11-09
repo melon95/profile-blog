@@ -74,6 +74,14 @@ const sideNavList: {
       label: '类型声明',
       router: 'type-declare',
     },
+    {
+      label: '配置文件',
+      router: 'config',
+    },
+    {
+      label: 'React 中的 TypeScript 类型',
+      router: 'react',
+    },
   ],
 }
 
