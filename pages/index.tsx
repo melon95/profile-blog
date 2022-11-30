@@ -4,8 +4,20 @@ import { HomeName } from './_app'
 
 const list = [
   {
+    label: 'JavaScript系列',
+    router: 'javascript',
+  },
+  {
+    label: 'TypeScript系列',
+    router: 'typescript',
+  },
+  {
     label: 'React系列',
     router: 'react',
+  },
+  {
+    label: 'Node系列',
+    router: 'node',
   },
   {
     label: 'Webpack系列',
@@ -14,18 +26,6 @@ const list = [
   {
     label: 'Mobx系列',
     router: 'mobx',
-  },
-  {
-    label: 'JavaScript系列',
-    router: 'javascript',
-  },
-  {
-    label: 'Node系列',
-    router: 'node',
-  },
-  {
-    label: 'TypeScript系列',
-    router: 'typescript',
   },
 ]
 

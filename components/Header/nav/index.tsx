@@ -17,9 +17,24 @@ const Nav = () => {
   const list = useMemo(
     () => [
       {
+        label: 'JavaScript',
+        key: 'javascript',
+        router: '/javascript',
+      },
+      {
+        label: 'TypeScript',
+        key: 'typescript',
+        router: '/typescript',
+      },
+      {
         label: 'React',
         key: 'react',
         router: '/react',
+      },
+      {
+        label: 'Node',
+        key: 'node',
+        router: '/node',
       },
       {
         label: 'Webpack',
@@ -30,21 +45,6 @@ const Nav = () => {
         label: 'Mobx',
         key: 'mobx',
         router: '/mobx',
-      },
-      {
-        label: 'Node',
-        key: 'node',
-        router: '/node',
-      },
-      {
-        label: 'JavaScript',
-        key: 'javascript',
-        router: '/javascript',
-      },
-      {
-        label: 'TypeScript',
-        key: 'typescript',
-        router: '/typescript',
       },
       {
         label: (

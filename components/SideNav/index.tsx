@@ -87,6 +87,16 @@ const sideNavList: {
       router: 'tools',
     },
   ],
+  '/mobx': [
+    {
+      label: '介绍',
+      router: '',
+    },
+    {
+      label: '源码学习',
+      router: '/source-code',
+    },
+  ],
 }
 
 const SideNav = () => {
