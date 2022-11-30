@@ -1,0 +1,301 @@
+---
+title: Reaction
+keyword: Mobx入门 Mobx源码
+---
+
+# Reaction
+
+reactions 是需要理解的重要概念，因为他可以将 MobX 中所有的特性有机地融合在一起。 reactions 的目的是对自动发生的副作用进行建模。 它们的意义在于为你的可观察状态创建消费者，以及每当*关联*的值发生变化时，*自动*运行副作用。
+
+然而，理解了这一点之后，重要的是要认识到这里所讨论的 API 应该很少会被用到。 它们经常被抽象到其他的库里面（例如，mobx-react）或者你的应用程序中其他特定的抽象库。
+
+## autorun
+
+使用 reactions 最简单的方式是使用 [`autorun`](https://zh.mobx.js.org/reactions.html#autorun) 工具函数。 除此之外，还有 [`reaction`](https://zh.mobx.js.org/reactions.html#reaction) 和 [`when`](https://zh.mobx.js.org/reactions.html#when)。接下来就从 `autorun` 函数内部来看下 `Reaction` 的源码：
+
+```typescript
+function autorun(
+  view: (r: IReactionPublic) => any,
+  opts: IAutorunOptions = EMPTY_OBJECT,
+): IReactionDisposer {
+  const name: string =
+    opts?.name ??
+    (__DEV__ ? (view as any).name || 'Autorun@' + getNextId() : 'Autorun')
+  const runSync = !opts.scheduler && !opts.delay
+  let reaction: Reaction
+
+  if (runSync) {
+    // normal autorun
+    reaction = new Reaction(
+      name,
+      function (this: Reaction) {
+        this.track(reactionRunner)
+      },
+      opts.onError,
+      opts.requiresObservable,
+    )
+  } else {
+    // 异步执行：通过setTimeout或者自定义scheduler
+  }
+
+  function reactionRunner() {
+    view(reaction)
+  }
+  // 执行一次reaction
+  reaction.schedule_()
+  return reaction.getDisposer_()
+}
+```
+
+`autorun` 就是 `Reaction` 的一个语法糖，内部逻辑很简单：
+
+1. 创建一个 `Reaction` 实例
+2. 执行 `Reaction` 实例，实例内部会执行传入的 effect 函数
+3. 返回一个取消函数
+
+## Reaction
+
+```typescript
+class Reaction {
+  // 已经消费的observableValue
+  observing_: IObservable[] = []
+  // 新的消费的observableValue
+  newObserving_: IObservable[] = []
+  // 消费的observableValue的值是否发生了改变
+  dependenciesState_ = IDerivationState_.NOT_TRACKING_
+  diffValue_ = 0
+  runId_ = 0
+  unboundDepsCount_ = 0
+  isDisposed_ = false
+  isScheduled_ = false
+  isTrackPending_ = false
+  isRunning_ = false
+  isTracing_: TraceMode = TraceMode.NONE
+
+  constructor(
+    public name_: string = __DEV__ ? 'Reaction@' + getNextId() : 'Reaction',
+    // autorun中传入的effect函数
+    private onInvalidate_: () => void,
+    private errorHandler_?: (error: any, derivation: IDerivation) => void,
+    public requiresObservable_?,
+  ) {}
+
+  onBecomeStale_() {
+    this.schedule_()
+  }
+
+  schedule_() {
+    if (!this.isScheduled_) {
+      this.isScheduled_ = true
+      // 控制批量更新
+      globalState.pendingReactions.push(this)
+      // 遍历globalState.pendingReactions，依次执行reaction.runReaction_
+      runReactions()
+    }
+  }
+
+  /**
+   * internal, use schedule() if you intend to kick off a reaction
+   */
+  runReaction_() {
+    if (!this.isDisposed_) {
+      startBatch()
+      this.isScheduled_ = false
+      const prev = globalState.trackingContext
+      globalState.trackingContext = this
+      if (shouldCompute(this)) {
+        this.isTrackPending_ = true
+
+        try {
+          // 执行autorun传入的函数：reaction.track(effect())
+          this.onInvalidate_()
+        } catch (e) {
+          this.reportExceptionInDerivation_(e)
+        }
+      }
+      globalState.trackingContext = prev
+      endBatch()
+    }
+  }
+
+  track(fn: () => void) {
+    if (this.isDisposed_) {
+      return
+    }
+    startBatch()
+    let startTime
+    this.isRunning_ = true
+    const prevReaction = globalState.trackingContext
+    globalState.trackingContext = this
+    // effect 最终执行的地方，触发 get 消费observableValue
+    const result = trackDerivedFunction(this, fn, undefined)
+    globalState.trackingContext = prevReaction
+    this.isRunning_ = false
+    this.isTrackPending_ = false
+    if (isCaughtException(result)) {
+      this.reportExceptionInDerivation_(result.cause)
+    }
+    endBatch()
+  }
+}
+```
+
+### 执行 Reaction
+
+批量执行 `Reaction`
+
+```typescript
+function runReactions() {
+  // Trampolining, if runReactions are already running, new reactions will be picked up
+  if (globalState.inBatch > 0 || globalState.isRunningReactions) {
+    return
+  }
+  runReactionsHelper()
+}
+
+runReactionsHelper() {
+  globalState.isRunningReactions = true
+  const allReactions = globalState.pendingReactions
+  let iterations = 0
+
+  // 当运行reaction时，可能会产生新的reaction
+  while (allReactions.length > 0) {
+    let remainingReactions = allReactions.splice(0)
+    for (let i = 0, l = remainingReactions.length; i < l; i++) {
+      remainingReactions[i].runReaction_()
+    }
+  }
+  globalState.isRunningReactions = false
+}
+```
+
+`reaction.runReaction_` 会执行 `autorun` 传入的函数：`react.track(effect)`：
+
+```typescript
+function trackDerivedFunction<T>(
+  derivation: IDerivation,
+  f: () => T,
+  context: any,
+) {
+  // 监听是否在reaction外部读取值
+  const prevAllowStateReads = allowStateReadsStart(true)
+  // pre allocate array allocation + room for variation in deps
+  // array will be trimmed by bindDependencies
+  changeDependenciesStateTo0(derivation)
+
+  // 用户记录本次reaction执行过程中消费的observableValue
+  derivation.newObserving_ = new Array(derivation.observing_.length + 100)
+  derivation.unboundDepsCount_ = 0
+  derivation.runId_ = ++globalState.runId
+  const prevTracking = globalState.trackingDerivation
+  globalState.trackingDerivation = derivation
+  globalState.inBatch++
+  let result
+  try {
+    // 终于要执行 effect 函数了
+    result = f.call(context)
+  } catch (e) {
+    result = new CaughtException(e)
+  }
+  globalState.inBatch--
+  globalState.trackingDerivation = prevTracking
+
+  // 移除上次消费本次未消费的observableValue
+  // 添加上次未消费本次消费的observablevalue
+  bindDependencies(derivation)
+
+  warnAboutDerivationWithoutDependencies(derivation)
+  allowStateReadsEnd(prevAllowStateReads)
+  return result
+}
+```
+
+### 更新依赖关系
+
+`bindDependencies` 通过 3 次遍历来实现移除不再消费和添加新消费的 `ObservableValue`：
+
+```typescript
+function bindDependencies(derivation: IDerivation) {
+  const prevObserving = derivation.observing_
+  const observing = (derivation.observing_ = derivation.newObserving_!)
+  let lowestNewObservingDerivationState = IDerivationState_.UP_TO_DATE_
+
+  // 遍历newObserving，过滤重复的observableValue:
+  //   0: 第一次出现，把diffValue变成1
+  //   1: 重复出现，过滤
+  let i0 = 0,
+    l = derivation.unboundDepsCount_
+  for (let i = 0; i < l; i++) {
+    const dep = observing[i]
+    if (dep.diffValue_ === 0) {
+      dep.diffValue_ = 1
+      if (i0 !== i) {
+        observing[i0] = dep
+      }
+      i0++
+    }
+
+    if (
+      (dep as any as IDerivation).dependenciesState_ >
+      lowestNewObservingDerivationState
+    ) {
+      // 消费的computed可能发生了更新
+      lowestNewObservingDerivationState = (dep as any as IDerivation)
+        .dependenciesState_
+    }
+  }
+  observing.length = i0
+  derivation.newObserving_ = null
+  // 遍历上次的observing
+  //   0: 不再被消费，解除关联
+  //   1: 继续被消费，把diffValue变成0，此时所有diffValue为1的是新增的被消费的observableValue
+  l = prevObserving.length
+  while (l--) {
+    const dep = prevObserving[l]
+    if (dep.diffValue_ === 0) {
+      removeObserver(dep, derivation)
+    }
+    dep.diffValue_ = 0
+  }
+
+  // 遍历新的observing
+  //   0: 再次被消费的observableValue
+  //   1: 新的被消费的observableValue
+  while (i0--) {
+    const dep = observing[i0]
+    if (dep.diffValue_ === 1) {
+      dep.diffValue_ = 0
+      // 建立新的消费者关系，observalbeValue记录derivation
+      addObserver(dep, derivation)
+    }
+  }
+
+  if (lowestNewObservingDerivationState !== IDerivationState_.UP_TO_DATE_) {
+    // 如果消费的computed可能发生了更新，则需要重新执行
+    derivation.dependenciesState_ = lowestNewObservingDerivationState
+    derivation.onBecomeStale_()
+  }
+}
+```
+
+最后附上 `DerivationState` 状态的枚举：
+
+```typescript
+enum IDerivationState_ {
+  // 没有关联任何依赖
+  NOT_TRACKING_ = -1,
+  // 没有依赖更新，不需要重新计算
+  UP_TO_DATE_ = 0,
+  // 依赖的依赖发生变化，不确定是否会导致依赖变化，只有Computed会有这个状态
+  // 优化：没有必要每次依赖变化了都重新计算，只有在必须的时候才重新计算
+  POSSIBLY_STALE_ = 1,
+  // 存在依赖更新，需要重新计算
+  STALE_ = 2,
+}
+```
+
+## 总结
+
+Reactions 和 可观察值是通过**观察者模式**来建立关联的
+
+![观察者模式](http://melon.melon95.cn/images/2022/11/20/%E8%A7%82%E5%AF%9F%E8%80%85%E6%A8%A1%E5%BC%8F-84991953d2f7362f2a7176e90c64aa4b.png)

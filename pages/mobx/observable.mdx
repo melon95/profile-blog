@@ -1,0 +1,73 @@
+---
+title: Observable
+keyword: Mobx入门 Mobx源码
+---
+
+# Observable
+
+属性，完整的对象，数组，Maps 和 Sets 都可以被转化为可观察对象。 使得对象可观察的基本方法是使用 `makeObservable` 为每个属性指定一个注解。
+
+常用注解如下：
+
+- `observable` 定义一个存储 state 的可追踪字段
+- `action` 将一个方法标记为可以修改 state 的 action
+- `computed` 标记一个可以由 state 派生出新的值并且缓存其输出的 getter
+
+```typescript
+import { makeObservable, observable, computed, action } from 'mobx'
+
+class Doubler {
+  value
+  constructor(value) {
+    makeObservable(this, {
+      value: observable,
+      double: computed,
+      increment: action,
+    })
+    this.value = value
+  }
+  get double() {
+    return this.value * 2
+  }
+  increment() {
+    this.value++
+  }
+}
+```
+
+`makeObservable` 会把 `value` 、`double`、`increment` 都变成可观察对象，从而实现响应式编程。
+
+`makeObservable` 的实现也很简单：
+
+```typescript
+function makeObservable(target, annotations, options) {
+  const adm: ObservableObjectAdministration = asObservableObject(
+    target,
+    options,
+  )[$mobx]
+  startBatch()
+  try {
+    // Default to decorators
+    annotations ??= collectStoredAnnotations(target)
+
+    // Annotate
+    ownKeys(annotations).forEach((key) => adm.make_(key, annotations![key]))
+  } finally {
+    endBatch()
+  }
+  return target
+}
+```
+
+1. 把 `target` 转为可观察对象
+2. 遍历注解，递归把 `target` 的属性和方法也变成可观察对象
+
+使对象变的可观察的核心在于这个 `adm` 对象
+
+我会把 _Observable_ 这一部分分为三小节，因为它们在内部的实现方式是不一样的：
+
+- _Object_ 篇
+- _Array_ 篇
+- _Proxy_ 篇
+
+> Mobx 也支持观察 Map、Set 结构

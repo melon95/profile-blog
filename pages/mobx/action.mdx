@@ -1,0 +1,137 @@
+---
+title: Action
+keyword: Mobx入门 Mobx源码
+---
+
+# Action
+
+所有的应用程序都有 actions。action 就是任意一段修改 state 的代码。原则上，actions 总会为了对一个事件做出响应而发生。例如，点击了一个按钮，一些输入被改变了，一个 websocket 消息被送达了，等等。
+
+尽管 [`makeAutoObservable`](https://zh.mobx.js.org/observable-state.html#makeautoobservable) 可以自动帮你声明一部分 actions，但是 MobX 还是要求你声明你的 actions。Actions 可以帮助你更好的组织你的代码并提供以下性能优势：
+
+1. 它们在 [transactions](https://zh.mobx.js.org/api.html#transaction) 内部运行。任何可观察对象在最外层的 action 完成之前都不会被更新，这一点保证了在 action 完成之前，action 执行期间生成的中间值或不完整的值对应用程序的其余部分都是不可见的。
+2. 默认情况下，不允许在 actions 之外改变 state。这有助于在代码中清楚地对状态更新发生的位置进行定位。
+
+`action` 注解应该仅用于会*修改* state 的函数。带有 `action` 注解的成员是不可枚举的。
+
+为了尽可能地利用 MobX 的事务性，actions 应该尽可能被传到外围。如果一个类方法会修改 state，可以将其标记为 action。把事件处理函数标记为 actions 就更好了，因为最外层的事务起着决定性作用。一个未被标记的、会接着调用两个 actions 的事件处理函数仍然将会生成两个事务。
+
+从本质上讲，异步进程在 MobX 中不需要任何特殊处理，因为不论是何时引发的所有 reactions 都将会自动更新。
+
+```typescript
+function executeAction(
+  actionName: string,
+  canRunAsDerivation: boolean,
+  fn: Function,
+  scope?: any,
+  args?: IArguments,
+) {
+  // 开始前的准备工作
+  const runInfo = _startAction(actionName, canRunAsDerivation, scope, args)
+  try {
+    return fn.apply(scope, args)
+  } catch (err) {
+    runInfo.error_ = err
+    throw err
+  } finally {
+    // 恢复为执行action前的状态
+    _endAction(runInfo)
+  }
+}
+```
+
+`_startAction` 会创建一个执行 action 的环境信息，包括一些开始执行 action 前的全局信息：
+
+```typescript
+function _startAction(
+  actionName: string,
+  canRunAsDerivation: boolean, // true for autoAction
+  scope: any,
+  args?: IArguments,
+): IActionRunInfo {
+  const notifySpy_ = __DEV__ && isSpyEnabled() && !!actionName
+  let startTime_: number = 0
+  const prevDerivation_ = globalState.trackingDerivation
+  const runAsAction = !canRunAsDerivation || !prevDerivation_
+  startBatch()
+  let prevAllowStateChanges_ = globalState.allowStateChanges // by default preserve previous allow
+  if (runAsAction) {
+    untrackedStart()
+    prevAllowStateChanges_ = allowStateChangesStart(true)
+  }
+  const prevAllowStateReads_ = allowStateReadsStart(true)
+  const runInfo = {
+    runAsAction_: runAsAction,
+    prevDerivation_,
+    prevAllowStateChanges_,
+    prevAllowStateReads_,
+    notifySpy_,
+    startTime_,
+    actionId_: nextActionId++,
+    parentActionId_: currentActionId,
+  }
+  currentActionId = runInfo.actionId_
+  return runInfo
+}
+```
+
+在 `_endAction` 中则会恢复这些全局信息：
+
+```typescript
+function _endAction(runInfo: IActionRunInfo) {
+  if (currentActionId !== runInfo.actionId_) {
+    die(30)
+  }
+  currentActionId = runInfo.parentActionId_
+
+  if (runInfo.error_ !== undefined) {
+    globalState.suppressReactionErrors = true
+  }
+  allowStateChangesEnd(runInfo.prevAllowStateChanges_)
+  allowStateReadsEnd(runInfo.prevAllowStateReads_)
+  endBatch()
+  if (runInfo.runAsAction_) {
+    untrackedEnd(runInfo.prevDerivation_)
+  }
+  globalState.suppressReactionErrors = false
+}
+```
+
+## bound
+
+bound 用于注解，配合装饰器。会先把传入的函数通过 `bind` 绑定到 原对象上，在使用 action 包裹一层：
+
+```typescript
+function createActionDescriptor(
+  adm: ObservableObjectAdministration,
+  annotation: Annotation,
+  key: PropertyKey,
+  descriptor: PropertyDescriptor,
+  // provides ability to disable safeDescriptors for prototypes
+  safeDescriptors: boolean = globalState.safeDescriptors,
+) {
+  assertActionDescriptor(adm, annotation, key, descriptor)
+  let { value } = descriptor
+  if (annotation.options_?.bound) {
+    // bound,利用 bind 绑定好 this, proxy则为 adm.proxy，否则则是adm.target
+    value = value.bind(adm.proxy_ ?? adm.target_)
+  }
+  return {
+    value: createAction(
+      annotation.options_?.name ?? key.toString(),
+      value,
+      annotation.options_?.autoAction ?? false,
+      // https://github.com/mobxjs/mobx/discussions/3140
+      annotation.options_?.bound ? adm.proxy_ ?? adm.target_ : undefined,
+    ),
+    // Non-configurable for classes
+    // prevents accidental field redefinition in subclass
+    configurable: safeDescriptors ? adm.isPlainObject_ : true,
+    // https://github.com/mobxjs/mobx/pull/2641#issuecomment-737292058
+    enumerable: false,
+    // Non-obsevable, therefore non-writable
+    // Also prevents rewriting in subclass constructor
+    writable: safeDescriptors ? false : true,
+  }
+}
+```

@@ -1,0 +1,209 @@
+---
+title: Observable-Proxy
+keyword: Mobx入门 Mobx源码
+---
+
+# Observable-Proxy
+
+默认情况下，MobX 使用 `Proxy` 代理方式来让数组以及纯对象可观察。`Proxy` 能够提供最佳的性能表现以及在不同环境下大多数行为的一致性。 但是如过你的目标环境不支持 `Proxy`，你也可以通过配置将 Proxy 支持关闭。 这种情况大部分是由于你需要支持 IE 或在没有使用`Hermes`引擎的 React Native 环境中开发。
+
+使用`configure`方法来关闭 `Proxy` 支持
+
+```typescript
+import { configure } from 'mobx'
+
+configure({
+  useProxies: 'never',
+})
+```
+
+`useProxies`属性可被设置的值如下:
+
+- `"always"` (**默认值**): MobX 只能运行在支持 [`Proxy`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy)的环境中，如果环境不支持 `Proxy` 将报错
+- `"never"`: `Proxy`将不会被使用，MobX 降级到`non-proxy`替代方案。 兼容 ES5 环境， 但是会带来一些限制 [limitations](https://zh.mobx.js.org/configuration.html#limitations-without-proxy-support)
+- `"ifavailable"` (实验阶段): 如果环境支持则启用 `Proxy`，否则 降级到`non-proxy`替代方案。这个模式的优势是:MobX 将对不能在 ES5 环境中使用的 API 以及语言特性发出警告，触发 ES5 标准限制时抛出错误
+
+## Object
+
+使用 `Proxy` 时优先创建一个空 `Proxy` 对象拦截读写方法，并和 `adm` 对象通过 `proxy_` 关联起来，读写逻辑还是通过 `adm` 对象来管理：
+
+```typescript
+function asDynamicObservableObject(
+  target: any,
+  options?: CreateObservableOptions,
+): IIsObservableObject {
+  target = asObservableObject(target, options)
+  target[$mobx].proxy_ ??= new Proxy(target, objectProxyTraps)
+  // 返回创建的proxy对象
+  return target[$mobx].proxy_
+}
+```
+
+对象的处理器对象拦截了常用方法：
+
+```typescript
+const objectProxyTraps: ProxyHandler<any> = {
+  has(target: IIsObservableObject, name: PropertyKey): boolean {
+    return getAdm(target).has_(name)
+  },
+  // 读取
+  get(target: IIsObservableObject, name: PropertyKey): any {
+    return getAdm(target).get_(name)
+  },
+  set(target: IIsObservableObject, name: PropertyKey, value: any): boolean {
+    if (!isStringish(name)) {
+      return false
+    }
+    return getAdm(target).set_(name, value, true) ?? true
+  },
+  deleteProperty(target: IIsObservableObject, name: PropertyKey): boolean {
+    if (!isStringish(name)) {
+      return false
+    }
+    // null (intercepted) -> true (success)
+    return getAdm(target).delete_(name, true) ?? true
+  },
+  defineProperty(
+    target: IIsObservableObject,
+    name: PropertyKey,
+    descriptor: PropertyDescriptor,
+  ): boolean {
+    return getAdm(target).defineProperty_(name, descriptor) ?? true
+  },
+  ownKeys(target: IIsObservableObject): ArrayLike<string | symbol> {
+    return getAdm(target).ownKeys_()
+  },
+}
+```
+
+## Array
+
+```typescript
+function createObservableArray<T>(
+  initialValues: T[] | undefined,
+  enhancer: IEnhancer<T>,
+  name = __DEV__ ? 'ObservableArray@' + getNextId() : 'ObservableArray',
+  owned = false,
+): IObservableArray<T> {
+  const adm = new ObservableArrayAdministration(name, enhancer, owned, false)
+  addHiddenFinalProp(adm.values_, $mobx, adm)
+  // 创建代理对象，adm.values_是mobx真实存储数组的地方
+  const proxy = new Proxy(adm.values_, arrayTraps) as any
+  adm.proxy_ = proxy
+  if (initialValues && initialValues.length) {
+    // 把initialValues的元素存储到adm.values_中
+    adm.spliceWithArray_(0, 0, initialValues)
+  }
+  return proxy
+}
+```
+
+数组的处理器对象拦截了 `get`（通过下标获取值和获取原型方法） 、`set`，
+
+```typescript
+const arrayTraps = {
+  get(target, name) {
+    const adm: ObservableArrayAdministration = target[$mobx]
+    if (name === $mobx) {
+      return adm
+    }
+    if (name === 'length') {
+      return adm.getArrayLength_()
+    }
+    if (typeof name === 'string' && !isNaN(name as any)) {
+      // 拦截通过下标取值
+      return adm.get_(parseInt(name))
+    }
+    if (hasProp(arrayExtensions, name)) {
+      // 拦截原型方法
+      return arrayExtensions[name]
+    }
+    return target[name]
+  },
+  set(target, name, value): boolean {
+    const adm: ObservableArrayAdministration = target[$mobx]
+    if (name === 'length') {
+      adm.setArrayLength_(value)
+    }
+    if (typeof name === 'symbol' || isNaN(name)) {
+      target[name] = value
+    } else {
+      // numeric string
+      adm.set_(parseInt(name), value)
+    }
+    return true
+  },
+}
+```
+
+在上一节中说过，Mobx 把数组的原型方法分为两类：
+
+1. 改变数组本身
+2. 不改变数组本身
+   1. 简单方法
+   2. 遍历方法
+   3. reduce 方法
+
+而这些方法全部定义在 `arrayExtensions` 上面。
+
+## 属性操作
+
+### Object
+
+还是以 `value` 属性举例，`value` 的注解是 `observable`：
+
+```typescript
+observable.extend_ = function (adm, key, description, proxyTrap) {
+  return adm.defineObservableProperty_(
+    key,
+    descriptor.value,
+    this.options_?.enhancer ?? deepEnhancer,
+    proxyTrap,
+  )
+}
+```
+
+`adm.defineObservableProperty_` 的逻辑在上节介绍了：
+
+1. 重写 `getter` 和 `setter`
+2. 创建 `ObservableValue` 实例，保存在 `adm.values_` 的 Map 中
+
+但是使用 `Proxy` 与不使用 `Proxy` 在属性拦截 `getter` 和`setter` 、获取属性、更新属性主要存在以下几个不同点：
+
+1. 使用 `Proxy` 时对**原对象**的属性重写 `getter` 和`setter` 是通过 `Reflect.defineProperty` 来实现的
+2. 使用 `Proxy` 时获取属性要比不使用 `Proxy` 多中转两层
+   1. `Proxy` 拦截器
+   2. `adm.get_`
+   3. `adm.target_[key]`
+   4. `adm.getObservablePropValue_(key)`
+   5. `observableValue.get()`
+3. 使用 `Proxy` 时更新属性要比不使用 `Proxy` 多中转两层
+   1. `Proxy` 拦截器
+   2. `adm.set_`
+   3. `adm.setObservablePropValue_(key, value)`
+   4. `observableValue.set(value)`
+
+### Array
+
+数组在使用 `Proxy` 与不使用 `Proxy` 在属性拦截 `getter` 和`setter` 、获取属性、更新属性主要存在以下几个不同点
+
+1. 当使用 `Proxy` 时，属性和方法都是通过 `Proxy` 来拦截处理的，没有使用 `Proxy` 时，属性和方法都是通过原型链来处理的
+
+2. 获取属性和方法
+
+   1. `Proxy` 拦截器 ｜ `LegacyObservableArray.prototype`
+   2. `adm.get_`
+   3. `adm.values_[key]`
+
+3. 更新属性
+   1. `Proxy` 拦截器 | `LegacyObservableArray.prototype[index]`
+   2. `adm.set_`
+   3. `adm.values_[index] = value`
+
+## 关闭 Proxy 支持情况下的使用限制
+
+1.可观察的数组不再是真正的数组，因此使用 `Array.isArray`方法时将会返回 `false`。实际场景中，你在传递数组给其他模块时需要先使用`.slice()`操作来为原始数组创建一份浅拷贝，举个例子，`concat`操作在可观察数组上时将不会生效，因此你需要先使用`.slice(）`。
+
+2.在创建可观察的纯对象之后，对其进行添加/删除的属性操作自动观察将不会生效。如果你想通过 index 类数组下标的方式访问对象或者其他动态集合请使用可观察`maps`来替代。
+
+在不支持 Proxy 情况下，也是有方法使这些（add/delete）动态操作观察生效的。那就是通过[Collection utilities](https://zh.mobx.js.org/collection-utilities.html)工具集。你需要确保新属性的添加是通过工具集的`set`方法，使用工具集的 `values`/`keys`/`entries`来迭代对象，而不是 JavaScript 内置方法。 但是由于这经常会被忘记，所以我们还是推荐尽量使用可观察的`maps`来替代

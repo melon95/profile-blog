@@ -96,6 +96,50 @@ const sideNavList: {
       label: '源码学习',
       router: '/source-code',
     },
+    {
+      label: '概念解释',
+      router: '/explanation',
+    },
+    {
+      label: 'Observable',
+      router: '/observable',
+    },
+    {
+      label: 'Observable-Object',
+      router: '/observable-object',
+    },
+    {
+      label: 'Observable-Array',
+      router: '/observable-array',
+    },
+    {
+      label: 'Observable-Proxy',
+      router: '/observable-proxy',
+    },
+    {
+      label: 'Reaction',
+      router: '/reaction',
+    },
+    {
+      label: 'Computed',
+      router: '/computed',
+    },
+    {
+      label: 'Action',
+      router: '/action',
+    },
+    {
+      label: '批量更新',
+      router: '/batch-update',
+    },
+    {
+      label: '装饰器',
+      router: '/descrtor',
+    },
+    {
+      label: '集成 React',
+      router: '/mobx-react-lite',
+    },
   ],
 }
 

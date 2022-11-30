@@ -1,0 +1,157 @@
+---
+title: 装饰器
+keyword: Mobx入门 Mobx源码
+---
+
+# 装饰器
+
+在版本 6 之前，Mobx 鼓励使用 ES.next 中的 decorators,将某个对象标记为`observable`, `computed` 和 `action`。然而，装饰器语法尚未定案以及未被纳入 ES 标准，标准化的过程还需要很长时间，且未来制定的标准可能与当前的装饰器实现方案有所不同。出于兼容性的考虑，我们在 MobX 6 中放弃了它们，并建议使用[`makeObservable` 、`makeAutoObservable`代替。
+
+任何可以使用`observable`, `action` 和 `computed`等注解的地方，也可以使用 decorator。
+
+在版本 6 中，为了让装饰器的实现更简单以及保证装饰器的兼容性，必须在构造函数中调用`makeObservable(this)`。Mobx 可以根据 `makeObservable`第二个参数提供的装饰器信息，将实例设置为 observable。
+
+## 实现
+
+装饰器在 `Mobx` 中的是基于 `storeAnnotation` 这个函数来实现的：
+
+```typescript
+const storedAnnotationsSymbol = Symbol('mobx-stored-annotations')
+function storeAnnotation(
+  prototype: any,
+  key: PropertyKey,
+  annotation: Annotation,
+) {
+  if (!hasProp(prototype, storedAnnotationsSymbol)) {
+    // 创建symbol来保存使用了装饰器的属性，以及对应装饰器的注解
+    addHiddenProp(prototype, storedAnnotationsSymbol, {})
+  }
+
+  // Ignore override
+  if (!isOverride(annotation)) {
+    // 保存使用了装饰器的属性，以及对应装饰器的注解
+    prototype[storedAnnotationsSymbol][key] = annotation
+  }
+}
+```
+
+在`makeobservable` 中，只传入了一个 `this` 参数，就会从 `this[storedAnnotationsSymbol]` 获取注解对象，后续逻辑跟不使用装饰器的逻辑是一致的：
+
+```typescript
+function makeObservable(target, annotations, options) {
+  const adm: ObservableObjectAdministration = asObservableObject(
+    target,
+    options,
+  )[$mobx]
+  startBatch()
+  try {
+    // Default to decorators
+    annotations ??= collectStoredAnnotations(target)
+
+    // Annotate
+    ownKeys(annotations).forEach((key) => adm.make_(key, annotations![key]))
+  } finally {
+    endBatch()
+  }
+  return target
+}
+```
+
+函数参数 `annotations` 为 undefined，则会执行 `collectStoredAnnotations` 去获取装饰器注解：
+
+```typescript
+function collectStoredAnnotations(target): AnnotationsMap<any, any> {
+  if (!hasProp(target, storedAnnotationsSymbol)) {
+    addHiddenProp(target, storedAnnotationsSymbol, {})
+  }
+  return target[storedAnnotationsSymbol]
+}
+```
+
+不同的装饰器的区别在于对应的注解不同，每个装饰器都是使用不同的注解，不同的注解在于 `make_` 、`extend_` 方法的不同：
+
+```typescript
+const annotation = {
+  annotationType_: name,
+  options_: options,
+  make_,
+  extend_,
+}
+```
+
+## action
+
+```typescript
+const actionAnnotation = {
+  annotationType_: name,
+  options_: options,
+  make_,
+  extend_,
+}
+
+function make_(
+  adm: ObservableObjectAdministration,
+  key: PropertyKey,
+  descriptor: PropertyDescriptor,
+  source: object,
+): MakeResult {
+  // bound
+  if (this.options_?.bound) {
+    return this.extend_(adm, key, descriptor, false) === null
+      ? MakeResult.Cancel
+      : MakeResult.Break
+  }
+
+  const actionDescriptor = createActionDescriptor(
+    adm,
+    this,
+    key,
+    descriptor,
+    false,
+  )
+  defineProperty(source, key, actionDescriptor)
+  return MakeResult.Continue
+}
+
+function extend_(
+  adm: ObservableObjectAdministration,
+  key: PropertyKey,
+  descriptor: PropertyDescriptor,
+  proxyTrap: boolean,
+): boolean | null {
+  const actionDescriptor = createActionDescriptor(adm, this, key, descriptor)
+  return adm.defineProperty_(key, actionDescriptor, proxyTrap)
+}
+```
+
+不管有没有 `bound`，都会执行 `createActionDescriptor` 函数来创建属性描述符：
+
+```typescript
+function createActionDescriptor(
+  adm: ObservableObjectAdministration,
+  annotation: Annotation,
+  key: PropertyKey,
+  descriptor: PropertyDescriptor,
+  // provides ability to disable safeDescriptors for prototypes
+  safeDescriptors: boolean = globalState.safeDescriptors,
+) {
+  assertActionDescriptor(adm, annotation, key, descriptor)
+  let { value } = descriptor
+  if (annotation.options_?.bound) {
+    value = value.bind(adm.proxy_ ?? adm.target_)
+  }
+  return {
+    value: createAction(
+      annotation.options_?.name ?? key.toString(),
+      value,
+      annotation.options_?.autoAction ?? false,
+      annotation.options_?.bound ? adm.proxy_ ?? adm.target_ : undefined,
+    ),
+    configurable: safeDescriptors ? adm.isPlainObject_ : true,
+    enumerable: false,
+    writable: safeDescriptors ? false : true,
+  }
+}
+```
+
+可以看出 `action` 注解就是使用 `createAction` 来包装原始函数，而 `bound` 则是在包装前，先通过 `bind` 来绑定 `this`。

@@ -1,0 +1,356 @@
+---
+title: Observable-Object
+keyword: Mobx入门 Mobx源码
+---
+
+# Observable-Object
+
+`Object` 的 `adm` 对象是通过类 `ObservableObjectAdministration` 实例化出来的：
+
+```typescript
+class ObservableObjectAdministration {
+  keysAtom_: IAtom
+  changeListeners_
+  interceptors_
+  proxy_: any
+  isPlainObject_: boolean
+  appliedAnnotations_?: object
+  private pendingKeys_: undefined | Map<PropertyKey, ObservableValue<boolean>>
+
+  constructor(
+    public target_: any,
+    public values_ = new Map(),
+    public name_: string,
+    // Used anytime annotation is not explicitely provided
+    public defaultAnnotation_ = autoAnnotation,
+  ) {
+    this.keysAtom_ = new Atom(
+      __DEV__ ? `${this.name_}.keys` : 'ObservableObject.keys',
+    )
+    // Optimization: we use this frequently
+    this.isPlainObject_ = isPlainObject(this.target_)
+  }
+  get_(key: string) {}
+  set_(key: string) {}
+  make_(key: string, annotation) {}
+}
+```
+
+把 `makeObservable` 的第一个参数 `target` 作为参数传入，建立 `target` 和 `adm` 之间的关联：
+
+```typescript
+function makeObservable(target, annotations, options) {
+  const adm: ObservableObjectAdministration = asObservableObject(
+    target,
+    options,
+  )[$mobx]
+  startBatch()
+  try {
+    // Default to decorators
+    annotations ??= collectStoredAnnotations(target)
+
+    // Annotate
+    ownKeys(annotations).forEach((key) => adm.make_(key, annotations![key]))
+  } finally {
+    endBatch()
+  }
+  return target
+}
+
+target.$mobx = adm
+adm.target_ = target
+```
+
+让我们再次回到 `makeObservable` 函数去，当获取到 `adm` 对象后，会便利传入的 注解对象，把 `target` 上存在的属性转换为可观察对象：
+
+```typescript
+ownKeys(annotations).forEach((key) => adm.make_(key, annotations![key]))
+```
+
+在 `adm.make_` 中会根据注解来进行不同的处理
+
+```typescript
+    /**
+     * @param {PropertyKey} key
+     * @param {Annotation|boolean} annotation true - use default annotation, false - ignore prop
+     */
+    make_(key: PropertyKey, annotation: Annotation | boolean): void {
+        if (annotation === true) {
+          // 用于makeAutoObservable，来自动判断注解
+            annotation = this.defaultAnnotation_
+        }
+        if (annotation === false) {
+            return
+        }
+        let source = this.target_
+        while (source && source !== objectPrototype) {
+            const descriptor = getDescriptor(source, key)
+            if (descriptor) {
+              // annotation
+                const outcome = annotation.make_(this, key, descriptor, source)
+                if (outcome === MakeResult.Cancel) {
+                    return
+                }
+                if (outcome === MakeResult.Break) {
+                    break
+                }
+            }
+            source = Object.getPrototypeOf(source)
+        }
+        recordAnnotationApplied(this, annotation, key)
+    }
+```
+
+## 重写读写逻辑
+
+比如把 `value` 属性转换可观察的对象，就会执行 `observable` 注解的 `make_` 方法：
+
+```typescript
+const observable = function createObservable() {}
+observable.make_ = function (adm, key, descriptor) {
+  return this.extend_(adm, key, descriptor, false) === null
+    ? MakeResult.Cancel
+    : MakeResult.Break
+}
+observable.extend_ = function (adm, key, descriptor, proxyTrap) {
+  return adm.defineObservableProperty_(
+    key,
+    descriptor.value,
+    this.options_?.enhancer ?? deepEnhancer,
+    proxyTrap,
+  )
+}
+```
+
+最终又回到 `amd` 对象的 `defineObservableProperty_`
+
+```typescript
+defineObservableProperty_(
+  key: PropertyKey,
+  value: any,
+  enhancer: IEnhancer<any>,
+  proxyTrap: boolean = false
+): boolean | null {
+  try {
+      startBatch()
+			// 1. 这是最关键的一步，是监听属性的get和set
+      const cachedDescriptor = getCachedObservablePropDescriptor(key)
+      const descriptor = {
+          configurable: globalState.safeDescriptors ? this.isPlainObject_ : true,
+          enumerable: true,
+          get: cachedDescriptor.get,
+          set: cachedDescriptor.set
+      }
+      // 2. 修改key的属性描述符
+      Object.defineProperty(this.target_, key, descriptor)
+    // 3. 创建可观察值对象，收集和更新依赖
+      const observable = new ObservableValue(
+          value,
+          enhancer,
+          __DEV__ ? `${this.name_}.${key.toString()}` : "ObservableObject.key",
+          false
+      )
+      // 4. 保存到adm.values_，方便get取值
+      this.values_.set(key, observable)
+      // Notify (value possibly changed by ObservableValue)
+      this.notifyPropertyAddition_(key, observable.value_)
+  } finally {
+      endBatch()
+  }
+  return true
+}
+```
+
+重点看 `getCachedObservablePropDescriptor` 方法：
+
+```typescript
+const descriptorCache = Object.create(null)
+function getCachedObservablePropDescriptor(key) {
+  return (
+    descriptorCache[key] ||
+    (descriptorCache[key] = {
+      get() {
+        return this[$mobx].getObservablePropValue_(key)
+      },
+      set(value) {
+        return this[$mobx].setObservablePropValue_(key, value)
+      },
+    })
+  )
+}
+```
+
+然后通过 `Object.defineProperty` 修改 `key` 的 `get` 和 `set`，监听 `key` 的读取和更新。
+
+最后创建可观察值对象，收集和更新使用 `key` 的依赖，并保存到 `adm.values_` 中。
+
+## 获取值
+
+所以但我们读取一个可观察对象的值的时候，不是简单的直接获取对象的属性，而是通过了 `adm` 和 `observableValue` 两层中转才取到我们想要的值：
+
+```typescript
+adm.getObservablePropValue_(key: PropertyKey): any {
+  return this.values_.get(key)!.get()
+}
+observableValue.get = function () {
+  // 记录依赖关系
+   this.reportObserved()
+   return this.value_
+}
+```
+
+`reportObserved`
+
+```typescript
+observableValue.reportObserved = function () {
+  return reportObserved(this)
+}
+
+function reportObserved(observable: IObservable): boolean {
+  // 获取当前的依赖
+  const derivation = globalState.trackingDerivation
+  if (derivation !== null) {
+    /**
+     * Simple optimization, give each derivation run an unique id (runId)
+     * Check if last time this observable was accessed the same runId is used
+     * if this is the case, the relation is already known
+     */
+    if (derivation.runId_ !== observable.lastAccessedBy_) {
+      observable.lastAccessedBy_ = derivation.runId_
+      // 在derivation的新依赖值列表中添加当前依赖值
+      derivation.newObserving_![derivation.unboundDepsCount_++] = observable
+      if (!observable.isBeingObserved_ && globalState.trackingContext) {
+        observable.isBeingObserved_ = true
+      }
+    }
+    return true
+  } else if (observable.observers_.size === 0 && globalState.inBatch > 0) {
+    queueForUnobservation(observable)
+  }
+
+  return false
+}
+```
+
+当 `reaction` 执行完后，会对比 _derivation_ 的新旧依赖值列表，移除没有用到的旧的依赖值，添加新的依赖值
+
+```typescript
+function bindDependencies(derivation: IDerivation) {
+  // 旧依赖值
+  const prevObserving = derivation.observing_
+  // 新依赖值
+  const observing = (derivation.observing_ = derivation.newObserving_!)
+  let lowestNewObservingDerivationState = IDerivationState_.UP_TO_DATE_
+
+  let i0 = 0,
+    l = derivation.unboundDepsCount_
+  // 过滤重复的依赖值
+  // 遍历新的依赖值列表并检查diffValue
+  // 0: 第一次出现，把diffValue更新为1
+  // 1. 多次出现，过滤掉重复的依赖值
+  for (let i = 0; i < l; i++) {
+    const dep = observing[i]
+    if (dep.diffValue_ === 0) {
+      dep.diffValue_ = 1
+      if (i0 !== i) {
+        observing[i0] = dep
+      }
+      i0++
+    }
+
+    // 根据每个依赖值的状态来计算derivation的状态
+    if (
+      (dep as any as IDerivation).dependenciesState_ >
+      lowestNewObservingDerivationState
+    ) {
+      lowestNewObservingDerivationState = (dep as any as IDerivation)
+        .dependenciesState_
+    }
+  }
+  observing.length = i0
+  derivation.newObserving_ = null
+  // 移除不在使用的依赖值
+  // 遍历旧的依赖值列表并检查 diffValue
+  //  0: 需要移除的依赖值
+  //  1. 需要保留的依赖值，并把 diffValue更新为0
+  l = prevObserving.length
+  while (l--) {
+    const dep = prevObserving[l]
+    if (dep.diffValue_ === 0) {
+      removeObserver(dep, derivation)
+    }
+    dep.diffValue_ = 0
+  }
+  // 添加新的依赖值
+  // 遍历新的依赖值列表并检查diffValue
+  //  0: 已经依赖了，不需要做任何处理
+  //  1. 需要添加的依赖值，并把diffValue更新为0
+  while (i0--) {
+    const dep = observing[i0]
+    if (dep.diffValue_ === 1) {
+      dep.diffValue_ = 0
+      // 把依赖保存到依赖值的observers_中(Set)
+      // observableValue.observers_.add(derivation)
+      addObserver(dep, derivation)
+    }
+  }
+
+  // 有依赖值的值是有更新的或则可能有更新的，则会重新执行一次
+  if (lowestNewObservingDerivationState !== IDerivationState_.UP_TO_DATE_) {
+    derivation.dependenciesState_ = lowestNewObservingDerivationState
+    derivation.onBecomeStale_()
+  }
+}
+```
+
+## 更新值
+
+值的更新也是一样的，需要经过 `adm` 和 `observableValue` 的转换才会去更新值：
+
+```typescript
+adm.setObservablePropValue_ = function (key, value) {
+  // 获取key对应的observableValue对象
+  const observable = this.values_.get(key)
+  // 根据newValue创建可观察对象，并比较newValue和observableValue.value_是否相等，如果相等则返回globalState.UNCHANGED
+  newValue = (observable as any).prepareNewValue_(newValue)
+  if (newValue !== globalState.UNCHANGED) {
+    // 保存newValue, 并通知依赖进行更新
+    observable.setNewValue_(newValue)
+  }
+  return true
+}
+
+observableValue.serNewValue_ = function (value) {
+  this.value_ = value
+  this.reportChanged()
+}
+```
+
+当值更新后，会遍历依赖数组通知更新：
+
+```typescript
+observableValue.reportChanged = function () {
+  startBatch()
+  propagateChanged(this)
+  endBatch()
+}
+function propagateChanged(observable: IObservable) {
+  if (observable.lowestObserverState_ === IDerivationState_.STALE_) {
+    // 如果值存在多次更新，且不是第一次更新
+    return
+  }
+  observable.lowestObserverState_ = IDerivationState_.STALE_
+
+  observable.observers_.forEach((d) => {
+    if (d.dependenciesState_ === IDerivationState_.UP_TO_DATE_) {
+      // 更新依赖
+      d.onBecomeStale_()
+    }
+    d.dependenciesState_ = IDerivationState_.STALE_
+  })
+}
+```
+
+## 总结
+
+Mobx 之所以能够做到对值进行观察，就是利用 `Object.defineProperty` 重写属性的 `getter` 和 `setter` ，在获取值时记录对应的 _diderivation_ ，更新值时通知 _derivation_ 。

@@ -1,0 +1,302 @@
+---
+title: Observable-Array
+keyword: Mobx入门 Mobx源码
+---
+
+# Observable-Array
+
+`Array` 的实现相对 `Object` 的实现会复杂一下，因为 `Array` 除了可以通过下标来获取和更新值外，还可以通过原型方法来操作数组。
+
+## 两大类
+
+`LegacyObservableArray` 实现对数组原型方法的重写，`ObservableArrayAdministration` 实现对数组元素的读写控制
+
+```typescript
+class StubArray {}
+Object.setPrototypeOf(StubArray.prototype, Array.prototype)
+
+class LegacyObservableArray<T> extends StubArray {
+  constructor(
+    initialValues,
+    enhancer,
+    name = 'ObservableArray',
+    owned = false,
+  ) {
+    super()
+    // 创建 adm 对象
+    const adm = new ObservableArrayAdministration(name, enhancer, owned, true)
+    adm.proxy_ = this as any
+    addHiddenFinalProp(this, $mobx, adm)
+
+    if (initialValues && initialValues.length) {
+      const prev = allowStateChangesStart(true)
+      // 保存初始化值：adm.values_
+      this.spliceWithArray(0, 0, initialValues)
+      allowStateChangesEnd(prev)
+    }
+  }
+}
+
+class ObservableArrayAdministration {
+  atom_: IAtom
+  readonly values_: any[] = []
+  constructor() {}
+  dehanceValues_(values: any[]): any[] {
+    if (this.dehancer !== undefined && values.length > 0) {
+      return values.map(this.dehancer) as any
+    }
+    return values
+  }
+}
+```
+
+## 原型方法
+
+Mobx 把数组的原型方法分为两大类：
+
+1. 改变数组本身
+   1. `pop`
+   2. `push`
+   3. `shift`
+   4. `unshift`
+   5. `splice`
+   6. `sort`
+   7. `reverse`
+2. 不改变数组本身
+   1. 简单方法
+      1. `concat`
+      2. `flat`
+      3. `includes`
+      4. `indexOf`
+      5. `join`
+      6. `lastIndexOf`
+      7. `slice`
+      8. `toString`
+      9. `toLocaleString`
+   2. 遍历方法
+      1. `every`
+      2. `filter`
+      3. `find`
+      4. `findIndex`
+      5. `flatMap`
+      6. `forEach`
+      7. `map`
+      8. `some`
+   3. reduce 方法
+      1. `reduce`
+      2. `reduceRight`
+
+### 改变数组本身的原型方法
+
+对于这类方法，Mobx 通过重写这部分方法，在 `adm.spliceWithArray_` 中完成对数组本身的改变
+
+```typescript
+LegacyObservableArray.prptotype = {
+  push(...items: any[]): number {
+    const adm: ObservableArrayAdministration = this[$mobx]
+    adm.spliceWithArray_(adm.values_.length, 0, items)
+    return adm.values_.length
+  },
+  splice(index: number, deleteCount?: number, ...newItems: any[]): any[] {
+    const adm: ObservableArrayAdministration = this[$mobx]
+    switch (arguments.length) {
+      case 0:
+        return []
+      case 1:
+        return adm.spliceWithArray_(index)
+      case 2:
+        return adm.spliceWithArray_(index, deleteCount)
+    }
+    return adm.spliceWithArray_(index, deleteCount, newItems)
+  },
+  ...
+}
+```
+
+### 不改变数组本身的原型方法
+
+该类下的方法分为三类：
+
+1. 简单方法
+2. 遍历方法
+3. reduce 方法
+
+分别通过三个工厂函数创建，并添加到 `LegacyObservableArray.prototype` 上
+
+```typescript
+function addArrayExtension(funcName, funcFactory) {
+  if (typeof Array.prototype[funcName] === 'function') {
+    arrayExtensions[funcName] = funcFactory(funcName)
+  }
+}
+
+Object.entries(arrayExtensions).forEach(([prop, fn]) => {
+  if (prop !== 'concat') {
+    addHiddenProp(LegacyObservableArray.prototype, prop, fn)
+  }
+})
+```
+
+**简单方法**
+
+```typescript
+function simpleFunc(funcName) {
+  return function () {
+    const adm: ObservableArrayAdministration = this[$mobx]
+    adm.atom_.reportObserved()
+    const dehancedValues = adm.dehanceValues_(adm.values_)
+    return dehancedValues[funcName].apply(dehancedValues, arguments)
+  }
+}
+
+addArrayExtension('concat', simpleFunc)
+addArrayExtension('flat', simpleFunc)
+addArrayExtension('includes', simpleFunc)
+addArrayExtension('indexOf', simpleFunc)
+addArrayExtension('join', simpleFunc)
+addArrayExtension('lastIndexOf', simpleFunc)
+addArrayExtension('slice', simpleFunc)
+addArrayExtension('toString', simpleFunc)
+addArrayExtension('toLocaleString', simpleFunc)
+```
+
+**遍历方法**
+
+```typescript
+function mapLikeFunc(funcName) {
+  return function (callback, thisArg) {
+    const adm: ObservableArrayAdministration = this[$mobx]
+    adm.atom_.reportObserved()
+    const dehancedValues = adm.dehanceValues_(adm.values_)
+    return dehancedValues[funcName]((element, index) => {
+      return callback.call(thisArg, element, index, this)
+    })
+  }
+}
+addArrayExtension('every', mapLikeFunc)
+addArrayExtension('filter', mapLikeFunc)
+addArrayExtension('find', mapLikeFunc)
+addArrayExtension('findIndex', mapLikeFunc)
+addArrayExtension('flatMap', mapLikeFunc)
+addArrayExtension('forEach', mapLikeFunc)
+addArrayExtension('map', mapLikeFunc)
+addArrayExtension('some', mapLikeFunc)
+```
+
+**reduce 方法**
+
+```typescript
+function reduceLikeFunc(funcName) {
+  return function () {
+    const adm: ObservableArrayAdministration = this[$mobx]
+    adm.atom_.reportObserved()
+    const dehancedValues = adm.dehanceValues_(adm.values_)
+    // #2432 - reduce behavior depends on arguments.length
+    const callback = arguments[0]
+    arguments[0] = (accumulator, currentValue, index) => {
+      return callback(accumulator, currentValue, index, this)
+    }
+    return dehancedValues[funcName].apply(dehancedValues, arguments)
+  }
+}
+
+addArrayExtension('reduce', reduceLikeFunc)
+addArrayExtension('reduceRight', reduceLikeFunc)
+```
+
+## 下标
+
+Mobx 为了监听通过下标读写数组元素，默认初始化一个大小为 1000 的数组，然后通过以序号的形式添加到 `LegacyObservableArray.prototype` 上：
+
+初始化大小为 1000 的空数组
+
+```typescript
+function reserveArrayBuffer(max: number) {
+  if (max > OBSERVABLE_ARRAY_BUFFER_SIZE) {
+    for (let index = OBSERVABLE_ARRAY_BUFFER_SIZE; index < max + 100; index++) {
+      createArrayBufferItem(index)
+    }
+    OBSERVABLE_ARRAY_BUFFER_SIZE = max
+  }
+}
+
+reserveArrayBuffer(1000)
+```
+
+把序号添加到 `LegacyObservableArray.prototype` 上
+
+```typescript
+function createArrayBufferItem(index: number) {
+  defineProperty(
+    LegacyObservableArray.prototype,
+    '' + index,
+    createArrayEntryDescriptor(index),
+  )
+}
+
+function createArrayEntryDescriptor(index: number) {
+  return {
+    enumerable: false,
+    configurable: true,
+    get: function () {
+      return this[$mobx].get_(index)
+    },
+    set: function (value) {
+      this[$mobx].set_(index, value)
+    },
+  }
+}
+```
+
+当读写数组元素时，又会通过被控制的 `get` 、`set` 来做依赖的收集和通知依赖
+
+```typescript
+class ObservableArrayAdministration {
+  get_(index: number): any | undefined {
+    if (index < this.values_.length) {
+      // 记录依赖
+      this.atom_.reportObserved()
+      // 从valus_中获取下标
+      return this.dehanceValue_(this.values_[index])
+    }
+  }
+
+  set_(index: number, newValue: any) {
+    const values = this.values_
+    if (index < values.length) {
+      // 在下标范围内更新
+      const oldValue = values[index]
+      newValue = this.enhancer_(newValue, oldValue)
+      const changed = newValue !== oldValue
+      if (changed) {
+        // 新旧值不一样，更新下标，并通知依赖
+        values[index] = newValue
+        this.notifyArrayChildUpdate_(index, newValue, oldValue)
+      }
+    } else if (index === values.length) {
+      // 添加新的元素
+      this.spliceWithArray_(index, 0, [newValue])
+    } else {
+      console.error(
+        `[mobx.array] Index out of bounds, ${index} is larger than ${values.length}`,
+      )
+    }
+  }
+}
+```
+
+## 总结
+
+Mobx 通过重写数组原型方法、控制下标读写来完成对数组读取和更新的监听。
+
+为了重写数组原型方法，创建了一个 `LegacyObservableArray` 类继承 `Array`，在 `LegacyObservableArray` 上重写了各种原型方法。原型方法又分为两类：
+
+1. 改变数组本身
+2. 不改变数组本身
+   1. 简单方法
+   2. 遍历方法
+   3. reduce 方法
+
+对于**改变数组本身**的方法最终都是基于 `splice` 方法实现，对于**不改变数组本身**的方法在内部通过 `call` 、`apply` 调用 `Array.prototype` 上的同名方法实现
+
+为了控制下标读写，Mobx 在 `LegacyObservableArray.prototype` 上默认定义了 0 ~ 1000 的下标对应的原型方法，再通过数组 `adm` 对象来监听下标的读写

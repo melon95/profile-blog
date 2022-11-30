@@ -1,0 +1,111 @@
+---
+title: Mobx 批量更新
+keyword: Mobx入门 Mobx源码
+---
+
+# Mobx 批量更新
+
+在阅读 `Mobx` 源码的过程中，经常会看两个函数：`startBatch` 、`endBatch`，一个标识更新的开始，一个标识更新的结束。
+
+`Mobx` 的批量更新是完全同步并且可以嵌套的，正在等待的 `Reaction` 只有当最外层的 `endBatch` 中才会被执行。
+
+```typescript
+function startBatch() {
+  globalState.inBatch++
+}
+
+function endBatch() {
+  if (--globalState.inBatch === 0) {
+    // 遍历globalState.pendingReactions，执行reaction
+    runReactions()
+    // 处理不在使用的观察值
+    const list = globalState.pendingUnobservations
+    for (let i = 0; i < list.length; i++) {
+      const observable = list[i]
+      observable.isPendingUnobservation_ = false
+      if (observable.observers_.size === 0) {
+        if (observable.isBeingObserved_) {
+          observable.isBeingObserved_ = false
+          observable.onBUO()
+        }
+        if (observable instanceof ComputedValue) {
+          observable.suspend_()
+        }
+      }
+    }
+    globalState.pendingUnobservations = []
+  }
+}
+```
+
+批量执行所有的待执行的 `Reaction`：
+
+```typescript
+function runReactions() {
+  if (globalState.inBatch > 0 || globalState.isRunningReactions) {
+    return
+  }
+  globalState.isRunningReactions = true
+  const allReactions = globalState.pendingReactions
+  let iterations = 0
+  while (allReactions.length > 0) {
+    let remainingReactions = allReactions.splice(0)
+    for (let i = 0, l = remainingReactions.length; i < l; i++) {
+      remainingReactions[i].runReaction_()
+    }
+  }
+  globalState.isRunningReactions = false
+}
+```
+
+那么 `Reaction` 是在哪里添加 `globalState.pendingReactions` 中去的呢？其实也是在 `Reaction` 中：
+
+```typescript
+class Reaction {
+  schedule_() {
+    if (!this.isScheduled_) {
+      this.isScheduled_ = true
+      globalState.pendingReactions.push(this)
+      runReactions()
+    }
+  }
+}
+```
+
+继续往上追踪，什么时候会执行 `Reaction`？当观察值更新时。观察值更新时会通过 `observableValue`：
+
+```typescript
+class ObservableValue {
+  setNewValue_(newValue: T) {
+    const oldValue = this.value_
+    this.value_ = newValue
+    this.reportChanged()
+  }
+  reportChanged() {
+    startBatch()
+    propagateChanged(this)
+    endBatch()
+  }
+}
+```
+
+`propagateChanged` 会遍历 `obervableValue` 的观察者列表，判断状态来决定是否需要重新执行：
+
+```typescript
+function propagateChanged(observable: IObservable) {
+  // invariantLOS(observable, "changed start");
+  if (observable.lowestObserverState_ === IDerivationState_.STALE_) {
+    return
+  }
+  observable.lowestObserverState_ = IDerivationState_.STALE_
+
+  // Ideally we use for..of here, but the downcompiled version is really slow...
+  observable.observers_.forEach((d) => {
+    if (d.dependenciesState_ === IDerivationState_.UP_TO_DATE_) {
+      d.schedule_()
+    }
+    d.dependenciesState_ = IDerivationState_.STALE_
+  })
+  // invariantLOS(observable, "changed end");
+}
+```

@@ -1,0 +1,90 @@
+---
+title: 集成 React
+keyword: Mobx Mobx源码
+---
+
+# 集成 React
+
+MobX 可以独立于 React 运行, 但是他们通常是结合在一起使用。集成 React 有两个工具包：`mobx-react` 、`mobx-react-lite`。这两个包的区别是 `mobx-react-lite` 只支持函数组件，不支持类组件。
+
+`mobx-react-lite` 对外暴露了两个 API：
+
+- `observer` ：HOC 组件，用于将函数组件转换为响应式组件
+- `useLocalObservable`：利用给出的值创建可观察值
+
+## observer
+
+`observer` 是一个高阶组件，在内部会创建一个 `Reaction` 来观察函数组件渲染过程中使用到的可观察值，配合 `React.memo` 实现响应式更新，只有在函数组件内部使用到的可观察值变化时，才会重新渲染函数组件。
+
+```typescript
+function observer(baseComponent) {
+  let render = baseComponent
+  const baseComponentName = baseComponent.displayName || baseComponent.name
+  let observerComponent = (props: any, ref) => {
+    return useObserver(() => render(props, ref), baseComponentName)
+  }
+  observerComponent = React.memo(observerComponent)
+  return observerComponent
+}
+```
+
+`useObserver` 负责创建 `Reaction` 观察函数组件内部使用的可观察值、当可观察值发生变化时重新渲染函数组件：
+
+```typescript
+function useObserver(fn, name) {
+  const [, setData] = React.useState(null)
+  const forceUpdate = () => setData([])
+
+  const reactionTrackingRef = React.useRef(null)
+  if (!reactionTrackingRef.current) {
+    const reaction = new Reaction(name, () => {
+      // 可观察值更新流程
+      if (trackingData.mounted) {
+        forceUpdate()
+      }
+    })
+    /**
+     * 往reactionTrackingRef上添加字段，并返回 reactionTrackingRef.current
+     * reaction
+     * mounted
+     */
+    const trackingData = addReactionToTrack(reactionTrackingRef, reaction)
+  }
+
+  const { reaction } = reactionTrackingRef.current!
+  React.useEffect(() => {
+    // 此时组件已经渲染完成，因为useEffect是异步完成的
+    if (reactionTrackingRef.current) {
+      reactionTrackingRef.current.mounted = true
+    }
+    return () => {
+      reactionTrackingRef.current!.reaction.dispose()
+      reactionTrackingRef.current = null
+    }
+  }, [])
+  let render
+  reaction.track(() => {
+    render = fn()
+  })
+  return render
+}
+```
+
+1. 第一次渲染时 `reactionTrackingRef` 为 null，新建一个 `Reaction`，往 `reactionTrackingRef` 上添加数据
+2. 利用 `Reaction` 的方法观察函数组件中的可观察值并渲染组件
+3. 执行 effect 记录组件已经挂载
+4. 当可观察值更新时，触发 `Reaction` 的第二个参数：
+   1. 组件已经挂载，执行 `forceUpdate` 重新渲染组件
+   2. 渲染组件就又会回到 2
+
+## useLocalObservable
+
+根据给的属性和方法创建一个可观察对象，是一个语法糖：
+
+```typescript
+function useLocalObservable(initializer, annotations) {
+  return useState(() =>
+    observable(initializer(), annotations, { autoBind: true }),
+  )[0]
+}
+```

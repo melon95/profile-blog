@@ -1,0 +1,217 @@
+---
+title: Computed
+keyword: Mobx入门 Mobx源码
+---
+
+# Computed
+
+计算值可以用来从其他可观察对象中派生信息。 计算值采用惰性求值，会缓存其输出，并且只有当其依赖的可观察对象被改变时才会重新计算。 它们在不被任何值观察时会被暂时停用。
+
+`ComputedValue` 跟 `ObservableValue` 类似，管理依赖、拦截 `get` 和 `set`
+
+```typescript
+class ConputedValue {
+  dependenciesState_ = IDerivationState_.NOT_TRACKING_
+  observing_: IObservable[] = [] // nodes we are looking at. Our value depends on these nodes
+  newObserving_ = null // during tracking it's an array with new observed observers
+  isBeingObserved_ = false
+  isPendingUnobservation_: boolean = false
+  observers_ = new Set<IDerivation>()
+  diffValue_ = 0
+  runId_ = 0
+  lastAccessedBy_ = 0
+  lowestObserverState_ = IDerivationState_.UP_TO_DATE_
+  unboundDepsCount_ = 0
+  protected value_: T | undefined | CaughtException = new CaughtException(null)
+  name_: string
+  triggeredBy_?: string
+  isComputing_: boolean = false // to check for cycles
+  isRunningSetter_: boolean = false
+  derivation: () => T // N.B: unminified as it is used by MST
+  setter_?: (value: T) => void
+  isTracing_: TraceMode = TraceMode.NONE
+  scope_: Object | undefined
+  private equals_: IEqualsComparer<any>
+  private requiresReaction_: boolean | undefined
+  keepAlive_: boolean
+
+  constructor(options: IComputedValueOptions<T>) {
+    if (!options.get) {
+      die(31)
+    }
+    this.derivation = options.get!
+    this.name_ =
+      options.name ||
+      (__DEV__ ? 'ComputedValue@' + getNextId() : 'ComputedValue')
+    if (options.set) {
+      this.setter_ = createAction(
+        __DEV__ ? this.name_ + '-setter' : 'ComputedValue-setter',
+        options.set,
+      ) as any
+    }
+    // 默认的比较函数是 ===
+    this.equals_ =
+      options.equals ||
+      ((options as any).compareStructural || (options as any).struct
+        ? comparer.structural
+        : comparer.default)
+    this.scope_ = options.context
+    this.requiresReaction_ = options.requiresReaction
+    this.keepAlive_ = !!options.keepAlive
+  }
+}
+```
+
+## 取值
+
+Computed 的取值跟普通的取值是一样的，最后会执行 `conputedValue.get`
+
+```typescript
+/**
+ * Returns the current value of this computed value.
+ * Will evaluate its computation first if needed.
+*/
+public get(): T {
+  if (this.isComputing_) {
+    die(32, this.name_, this.derivation)
+  }
+  // 记录依赖关系
+  reportObserved(this)
+  // 判断是否需要更新
+  if (shouldCompute(this)) {
+    let prevTrackingContext = globalState.trackingContext
+    if (this.keepAlive_ && !prevTrackingContext) {
+      globalState.trackingContext = this
+    }
+    // 重新计算，并比较新返回值和旧返回值是否变化
+    if (this.trackAndCompute()) {
+      // 返回值变化了，通知消费值
+      propagateChangeConfirmed(this)
+    }
+    globalState.trackingContext = prevTrackingContext
+  }
+  const result = this.value_!
+  return result
+}
+```
+
+## 重新计算
+
+Mobx 中使用 4 个状态来描述值是否发生变化、计算值是否需要重新计算、`Reaction` 是否需要再次运行：
+
+```typescript
+enum IDerivationState_ {
+  // 没有关联任何依赖
+  NOT_TRACKING_ = -1,
+  // 不需要更新
+  UP_TO_DATE_ = 0,
+  // 依赖的依赖发生变化，可能会需要重新计算,这是计算值独有的
+  POSSIBLY_STALE_ = 1,
+  // 浅层依赖变化了需要重新计算
+  STALE_ = 2,
+}
+```
+
+`shouldCompute` 也是根据这个来判断的：
+
+1. 除了 `POSSIBLY_STALE_` 外其他三个状态的判断都直接
+2. `POSSIBLY_STALE_` 会寻找当前计算值依赖的计算值，根据依赖的计算值的状态来决定自身的状态
+
+```typescript
+function shouldCompute(derivation: IDerivation): boolean {
+  switch (derivation.dependenciesState_) {
+    case IDerivationState_.UP_TO_DATE_:
+      return false
+    case IDerivationState_.NOT_TRACKING_:
+    case IDerivationState_.STALE_:
+      return true
+    case IDerivationState_.POSSIBLY_STALE_: {
+      // 计算值独有的状态的
+      const prevAllowStateReads = allowStateReadsStart(true)
+      const prevUntracked = untrackedStart()
+      const obs = derivation.observing_,
+        l = obs.length
+      for (let i = 0; i < l; i++) {
+        const obj = obs[i]
+        if (isComputedValue(obj)) {
+          // 遍历找到计算值依赖的计算值，并重新计算
+          try {
+            obj.get()
+          } catch (e) {
+            // we are not interested in the value *or* exception at this moment, but if there is one, notify all
+            untrackedEnd(prevUntracked)
+            allowStateReadsEnd(prevAllowStateReads)
+            return true
+          }
+          // if ComputedValue `obj` actually changed it will be computed and propagated to its observers.
+          // and `derivation` is an observer of `obj`
+          // invariantShouldCompute(derivation)
+          if (
+            (derivation.dependenciesState_ as any) === IDerivationState_.STALE_
+          ) {
+            // 如果计算值依赖的计算值需要更新，当前计算值也需要重新计算
+            untrackedEnd(prevUntracked)
+            allowStateReadsEnd(prevAllowStateReads)
+            return true
+          }
+        }
+      }
+      changeDependenciesStateTo0(derivation)
+      untrackedEnd(prevUntracked)
+      allowStateReadsEnd(prevAllowStateReads)
+      // 如果都不需要更新，则当前计算值也不需要重新计算
+      return false
+    }
+  }
+}
+```
+
+当判断当前计算值需要更新时，就会重新执行 `get` 函数并判断新返回值和旧返回值是否相同：
+
+```typescript
+trackAndCompute(): boolean {
+  // N.B: unminified as it is used by MST
+  const oldValue = this.value_
+  const wasSuspended =
+        /* see #1208 */ this.dependenciesState_ === IDerivationState_.NOT_TRACKING_
+  // 重新计算
+  const newValue = this.computeValue_(true)
+	// 只有两值不想等｜执行出错 ｜ 第一次计算 changed才会为true
+  const changed =
+        wasSuspended ||
+        isCaughtException(oldValue) ||
+        isCaughtException(newValue) ||
+        !this.equals_(oldValue, newValue)
+
+  if (changed) {
+    this.value_ = newValue
+  }
+
+  return changed
+}
+```
+
+重新计算的逻辑就是再次执行 `get` 函数的过程：
+
+```typescript
+computeValue_(track: boolean) {
+  this.isComputing_ = true
+  // don't allow state changes during computation
+  const prev = allowStateChangesStart(false)
+  let res: T | CaughtException
+  if (track) {
+    // 执行 get 函数，建立依赖关系
+    res = trackDerivedFunction(this, this.derivation, this.scope_)
+  } else {
+    // 不追踪依赖
+    try {
+      res = this.derivation.call(this.scope_)
+    } catch (e) {
+      res = new CaughtException(e)
+    }
+  }
+  allowStateChangesEnd(prev)
+  this.isComputing_ = false
+  return res
+}
+```
