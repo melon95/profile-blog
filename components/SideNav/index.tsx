@@ -141,6 +141,16 @@ const sideNavList: {
       router: '/mobx-react-lite',
     },
   ],
+  '/webpack': [
+    {
+      label: '介绍',
+      router: '',
+    },
+    {
+      label: '模块加载',
+      router: '/module-loading',
+    },
+  ],
 }
 
 const SideNav = () => {
