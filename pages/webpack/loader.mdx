@@ -1,0 +1,80 @@
+---
+title: Loader
+keyword: Webpack5
+---
+
+# Loader
+
+Webpack 支持使用 [loader](https://webpack.docschina.org/concepts/loaders) 对文件进行预处理。你可以构建包括 JavaScript 在内的任何静态资源。并且可以使用 Node.js 轻松编写自己的 loader。
+
+loader 用于对模块的源代码进行转换。loader 可以使你在 `import` 或 "load(加载)" 模块时预处理文件。因此，loader 类似于其他构建工具中“任务(task)”，并提供了处理前端构建步骤的得力方式。
+
+loader 执行采用 Compose 组合：从右到左（或从下到上）地取值(evaluate)/执行(execute)
+
+## 特性
+
+- loader 支持链式调用。链中的每个 loader 会将转换应用在已处理过的资源上。一组链式的 loader 将按照相反的顺序执行。链中的第一个 loader 将其结果（也就是应用过转换后的资源）传递给下一个 loader，依此类推。最后，链中的最后一个 loader，返回 webpack 所期望的 JavaScript。
+- loader 可以是同步的，也可以是异步的。
+- loader 运行在 Node.js 中，并且能够执行任何操作。
+- loader 可以通过 `options` 对象配置（仍然支持使用 `query` 参数来设置选项，但是这种方式已被废弃）。
+- 除了常见的通过 `package.json` 的 `main` 来将一个 npm 模块导出为 loader，还可以在 module.rules 中使用 `loader` 字段直接引用一个模块。
+- 插件(plugin)可以为 loader 带来更多特性。
+- loader 能够产生额外的任意文件
+
+## 本质
+
+loader 模块导出为一个函数，并且编写为 Node.js 兼容的 JavaScript。通常使用 npm 进行管理 loader，但是也可以将应用程序中的文件作为自定义 loader
+
+```js
+module.exports = function (source) {
+  // source 为 compiler 传递给 Loader 的一个文件的原内容
+  // 该函数需要返回处理后的内容给你，这里简单起见，直接把原内容返回了，相当于该 Loader 没有做任何转换
+  return source
+}
+```
+
+### 加载运行器
+
+定义：`loader-runner` 允许你不安装 Webpack 的情况下运行 loaders
+
+作用：
+
+- 作为 Webpack 的依赖，Webpack 中使用它执行 loader
+- 进行 loader 的开发和测试
+
+### 获取模块配置项
+
+在 Loader 中获取用户传入的 `options`，通过 `loader-utils` 的 `getOptions` 方法获取：
+
+```javascript
+const loaderUtils = require('loader-utils')
+module.exports = function (source) {
+  // 获取到用户句给当前 Loader 传入的 options
+  const options = loaderUtils.getOptions(this)
+  return source
+}
+```
+
+## 异步 Loader
+
+Loader 有同步和异步之分，上面的 Loader 是同步的 Loader，因为它们的转换流程都是同步的，转换完成后再返回结果。但有些场景下转换的步骤只能是异步完成的，例如你需要通过网络请求才能得出结果，如果采用同步的方式 `网络请求` 就会阻塞整个构建，导致构建非常缓慢。
+
+```javascript
+module.exports = function (source) {
+  // 告诉 Webpack 本次转换是异步的，Loader 会在 callback 中回调结果
+  var callback = this.async()
+  someAsyncOperation(source, function (err, result, sourceMaps, ast) {
+    // 通过 callback 返回异步执行后的结果
+    callback(err, result, sourceMaps, ast)
+  })
+}
+```
+
+## 总结
+
+Webpack 编译流程非常复杂，但其中设计 Loader 的部分主要包括：
+
+- Loader（Webpack）的默认配置
+- 使用 LoaderResolver 解析 Loader 模块路径
+- 根据 `rule.modules` 创建 RulesSet 规则集
+- 使用 `loader-runner` 运行 Loader

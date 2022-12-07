@@ -150,6 +150,22 @@ const sideNavList: {
       label: '模块加载',
       router: '/module-loading',
     },
+    {
+      label: 'HMR',
+      router: '/hmr',
+    },
+    {
+      label: 'Loader',
+      router: '/loader',
+    },
+    {
+      label: 'Plugin',
+      router: '/plugin',
+    },
+    {
+      label: '缓存',
+      router: '/cache',
+    },
   ],
 }
 

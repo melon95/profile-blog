@@ -1,0 +1,139 @@
+---
+title: HRM
+keyword: Webpack5
+---
+
+# HMR
+
+模块热替换(HMR - hot module replacement)功能会在应用程序运行过程中，替换、添加或删除模块，而无需重新加载整个页面。主要是通过以下几种方式，来显著加快开发速度：
+
+- 保留在完全重新加载页面期间丢失的应用程序状态。
+- 只更新变更内容，以节省宝贵的开发时间。
+- 在源代码中 CSS/JS 产生修改时，会立刻在浏览器中进行更新，这几乎相当于在浏览器 devtools 直接更改样式
+
+为了实现这一功能，会用到 `webpack-dev-server` 和 `HotModuleReplacementPlugin`。
+
+## 启动注入
+
+第一步先创建 `Webpack` 、启动 `DevServer` 服务
+
+```javascript
+const compiler = webpack(config)
+const serverConfig = {
+  ...createDevServerConfig(proxyConfig, urls.lanUrlForConfig),
+  host: HOST,
+  port,
+}
+const devServer = new WebpackDevServer(serverConfig, compiler)
+devServer.startCallback()
+```
+
+启动 `DevServer` 服务时会执行以下操作：
+
+1. 注入 `ws` 的客户端代码：`webpack-dev-server/client/index.js`
+
+2. 注入热更新的客户端代码：`webpack/hot/dev-server.js`
+
+3. 添加 `HotModuleReplacementPlugin` 插件，给模块添加 `hot` 对象
+
+   1. `HotModuleReplacementPlugin` 会加载 `webpack/lib/hmr` 里面的文件，会给每个模块都添加 `hot` 对象
+
+   2. `hot.check` 会通过 `hotDownloadManifest` 方法下载 `manifest.json`
+
+      ```javascript
+      webpack_require.hmrM = hotDownloadManifest = () => {
+        return fetch(__webpack_require__.p + webpack_require.hmrF()).then(
+          (response) => {
+            return response.json()
+          },
+        )
+      }
+
+      webpack_require.hmrF = () =>
+        'main.' + webpack_require.h() + '.hot-update.json'
+
+      webpack_require.h = () => hash
+      ```
+
+   3. 然后通过返回的`manifest.json` 会再次请求、加载更新后的 js 文件
+
+4. 监听 `Webpack` 的 `done` 钩子，当编译完成时通过 `ws` 通知客户端
+
+5. 通过 `webpack-dev-middleware` 设置 `webpack` 监听文件的变动把编译后的文件保存到内存中
+
+   1. 调用 `compilier.watching` 监听文件变动
+   2. 通过轮循**文件生成时间**来检查文件是否变动
+   3. 在变动后 1s 会重新开始编译
+   4. 通过 `memfs` 把编译后的文件保存到内存中
+
+6. 启动 `Node` 服务和 `ws` 服务
+
+```javascript
+additionalEntries.push(
+  `${require.resolve('../client/index.js')}?${webSocketURLStr}`,
+)
+additionalEntries.push(require.resolve('webpack/hot/dev-server'))
+
+const plugin = new webpack.HotModuleReplacementPlugin()
+plugin.apply(compiler)
+```
+
+## 文件更新
+
+当文件更新重新编译完成后，`ws` 服务端会通知 `ws` 客户端：
+
+```javascript
+this.sendMessage(clients, 'hash', stats.hash)
+this.sendMessage(clients, 'ok')
+```
+
+`ws` 客户端会监听 `hash` 、`ok` 事件：
+
+```javascript
+var onSocketMessage = {
+  hash: function hash(_hash) {
+    status.previousHash = status.currentHash
+    status.currentHash = _hash
+  },
+  ok: function ok() {
+    sendMessage('Ok')
+    hotEmitter.emit('webpackHotUpdate', status.currentHash)
+  },
+}
+```
+
+`hash` 事件会告知客户端一个 `hash` 值，用于客户端请求下次更新的 `manifest.json` 和模块
+
+`ok` 事件则是通过事件模块通知热更新的客户端代码去请求 `manifest.json` 和需要更新的模块
+
+```javascript
+hotEmitter.on('webpackHotUpdate', function (currentHash) {
+  lastHash = currentHash
+  if (!upToDate() && module.hot.status() === 'idle') {
+    log('info', '[HMR] Checking for updates on the server...')
+    check()
+  }
+})
+
+function check() {
+  module.hot.check(true).then(function (updatedModules) {
+    if (!updatedModules) {
+      // 兜底操作：刷新浏览器
+      window.location.reload()
+      return
+    }
+
+    if (!upToDate()) {
+      check()
+    }
+
+    if (upToDate()) {
+      log('info', '[HMR] App is up to date.')
+    }
+  })
+}
+```
+
+![image-20221206192414218](http://melon.melon95.cn/images/2022/12/07/image-20221206192414218-4e6f71a1fa191c469f2d2acba88c1fa9.png)
+
+![image-20221206192509676](http://melon.melon95.cn/images/2022/12/07/image-20221206192509676-caac6962494a844992e37d5d3c917102.png)

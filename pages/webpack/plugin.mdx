@@ -1,0 +1,58 @@
+---
+title: Plugin
+keyword: Webpack5
+---
+
+# Plugin
+
+**插件** 是 webpack 的支柱功能，基于 [tapable](https://github.com/webpack/tapable) 实现。Webpack 自身也是构建于你在 webpack 配置中用到的 **相同的插件系统** 之上！
+
+插件目的在于解决 `loader` 无法实现的**其他事**。
+
+## 本质
+
+webpack **插件**是一个具有 [`apply`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/apply) 方法的 JavaScript 对象。`apply` 方法会被 webpack compiler 调用，并且在**整个**编译生命周期都可以访问 compiler 对象。
+
+**ConsoleLogOnBuildWebpackPlugin.js**
+
+```javascript
+const pluginName = 'ConsoleLogOnBuildWebpackPlugin'
+
+class ConsoleLogOnBuildWebpackPlugin {
+  apply(compiler) {
+    // 注册钩子
+    compiler.hooks.run.tap(pluginName, (compilation) => {
+      console.log('webpack 构建正在启动！')
+    })
+  }
+}
+
+module.exports = ConsoleLogOnBuildWebpackPlugin
+```
+
+> compiler hook 的 tap 方法的第一个参数，应该是驼峰式命名的插件名称。建议为此使用一个常量，以便它可以在所有 hook 中重复使用。
+
+插件执行流程：
+
+1. Webpack 启动后，在读取配置的过程中会先执行插件的实例化 `new ConsoleLogOnBuildWebpackPlugin(options)`
+2. 在初始化 `compiler` 对象后，再调用 `ConsoleLogOnBuildWebpackPlugin.apply(compiler)` 给插件实例传入 `compiler` 对象
+3. 插件实例在获取到 `compiler` 对象后，就可以通过 `compiler.plugin(事件名称, 回调函数)` 监听到 Webpack 广播出来的事件，并且可以通过 `compiler` 对象去操作 Webpack
+
+## Compiler 和 Compilation
+
+在开发 Plugin 时最常用的两个对象就是 Compiler 和 Compilation，它们是 Plugin 和 Webpack 之间的桥梁。 Compiler 和 Compilation 的含义如下：
+
+- **Compiler**：该对象包含了 Webpack 环境所有的的配置信息，包含 `options`、`loaders` 和 `plugins` 这些信息，这个对象在 Webpack 启动时候被实例化，它是全局唯一的，可以简单地把它理解为 Webpack 实例；
+- **Compilation**：该对象包含了当前的模块资源、编译生成资源、变化的文件等。当 Webpack 以开发模式运行时，每当检测到一个文件变化，一次新的 Compilation 将被创建。Compilation 对象也提供了很多事件回调供插件做扩展。通过 Compilation 也能读取到 Compiler 对象。
+
+Compiler 和 Compilation 的区别在于：Compiler 代表了整个 Webpack 从启动到关闭的生命周期，而 Compilation 只是代表了一次新的编译。
+
+## 和 Loader 的区别
+
+**Loader**
+
+- 让 `Webpack` 能够处理非 `JavaScript` 资源，有独立的运行环境 `loader-runner`
+
+**Plugin**
+
+- 通过钩子去拓展 `Webpack` 的功能
