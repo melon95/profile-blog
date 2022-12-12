@@ -1,0 +1,119 @@
+---
+title: 模块
+keyword: nodejs module
+---
+
+# 模块
+
+## 模块定义
+
+在 `Node` 中每一个文件都被视为一个模块，可以 `require` 导入其他模块的变量，也可以 `exports` 导出变量供其他模块使用。
+
+![image-20221212220334242](http://melon.melon95.cn/images/2022/12/12/image-20221212220334242-3fd08bbaa34a31bf0574ab5b60748e33.png)
+
+模块中的本地变量是私有的，只有被 `exports` 导出的变量才能被引用，因为模块被 `NodeJs` 包装在一个函数中执行，这个函数会传入 5 个参数：`exports` 、`require` 、`module`、`__filename` 、`__dirname`，这也就是可以在模块中不定义而使用这些变量的原因。
+
+```javascript
+;(function (exports, require, module, __filename, __dirname) {
+  // Module code actually lives in here
+})
+```
+
+`Node` 模块实现了以下几点：
+
+- 将顶级变量的作用域限制在模块内部而不是全局对象上
+- 提供了一些特定于模块内的全局变量
+  - `module` 、`exports` 用于从模块中导出变量
+  - `require` 用于加载其他模块中导出的变量
+  - `__filename`、`__dirname` 表示当前模块的绝对文件名和文件目录
+
+> `exports` 是 `module.exports` 的引用，如果直接给 `module.exports` 赋值，`exports` 还是指向旧的 `module.exports`
+
+## 模块分类
+
+`Node` 有两种类型的模块：
+
+1. 核心模块：有 `Node` 提供，例如：`path`
+2. 文件模块：用户编写。根据加载路径的不同又可分为三种：
+   1. 相对路径
+   2. 绝对路径：如直接通过 CDN 加载模块
+   3. NPM 包
+
+## 模块加载
+
+当通过 `require` 来加载一个模块时，`Node` 会按照如下步骤来解析模块：
+
+1. 路径分析
+2. 文件定位
+3. 编译执行
+
+### 路径分析
+
+加载模块的第一步是通过模块名称来查找模块所处的位置，这一步中会因为模块类型的不同而有差异：
+
+- 核心模块存在内存中直接就可以使用，可以跳过文件定位和编译执行而执行使用，加载速度是最快的
+- 相对路径和绝对路径，因为已经指明了模块所在具体路径，加载速度仅次于核心模块
+- NPM 包是最慢的，从当前路径开始，一层一层的往上遍历 `node_modules` ，直到找到目标目录或根目录
+
+### 文件定位
+
+当确定了模块的位置后，下一步就是确定模块的入口文件。根据路径分析后的结果分为两种情况：
+
+1. 文件夹
+   1. 如果存在 `package.json` 文件
+      1. 根据 `main` 字段来进行文件定位（如果没有指定文件后缀名，则按照默认的文件后缀名顺序进行补齐）
+   2. 不存在 `package.json` 或者 `main` 解析失败，则查找目录下的 `index` 文件（按照默认的文件后缀名顺序进行补齐）
+   3. 如果还没有定位到文件
+      1. 相对路径和绝对路径：抛出异常
+      2. NPM 包：重新进入**路径分析**，继续向上遍历 `node_modules`
+2. 文件
+   1. 指定了文件后缀
+   2. 没有指定文件后缀，按照默认的文件后缀名顺序进行补齐
+
+> 默认的文件后缀名顺序：.js、.json、.node
+>
+> 可以通过 `require.extensions` 获取支持的文件后缀
+
+### 编译执行
+
+文件定位后就可以准备编译执行了，每种不同的文件后缀名都对应着一种加载方式：
+
+- `.js`
+  - 通过 `fs` 模块加载模块
+  - 对文件内容进行包装（模块定义中的包装函数）
+  - 把包装之后的代码通过调用 `vm.runInThisContext` 来获取可执行的函数
+  - 执行上一步得到的函数，传入对应的参数：`module.exports` 、`require` 、`module`、`__filename` 、`__dirname`
+- `.json` 加载方式最简单，通过 `fs` 模块加载文件，返回 `JSON.parse()` 后的结果
+- `.node` 是用 `C++` 编写的文件，通过 `dlopen()` 方法加载最后编译生成的文件
+- 其他文件后缀名默认按照 `.js` 的方式进行加载
+
+文件编译执行成功后，会以文件路径作为索引保存到 `module._cache` 上
+
+## 循环加载模块
+
+有 `a`、`b` 两个互相引用，`b` 引用 `a`，`a` 引用 `b` ，当执行 `node b.js` 时，在 `a` 中只会导出`b`已经执行的部分
+
+```javascript
+// a.js
+const b = require('./b.js')
+console.log('in a.js', b) // { beforeA: true }
+exports.isA = true
+
+// b.js
+exports.beforeA = true
+const a = require('./a.js')
+console.log('in b.js', a) // { isA: true }
+exports.isB = true
+```
+
+## 与 ES Module 的区别
+
+### ES Module
+
+- 导出的是值的引用，不能修改
+- 静态加载，只能声明在文件顶部
+
+### CommonJS
+
+- 导出的是值的拷贝，可以修改导出的值
+- 支持动态加载

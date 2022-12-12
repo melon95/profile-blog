@@ -167,6 +167,16 @@ const sideNavList: {
       router: '/cache',
     },
   ],
+  '/node': [
+    {
+      label: '介绍',
+      router: '/',
+    },
+    {
+      label: '模块',
+      router: '/module',
+    },
+  ],
 }
 
 const SideNav = () => {
