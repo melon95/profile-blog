@@ -1,0 +1,159 @@
+---
+title: 异步
+keyword: nodejs 异步I/O 事件循环
+---
+
+# 异步
+
+## 异步 I/O
+
+`Node` 在单个线程中运行， 实现了一个基于事件驱动的非阻塞 I/O 模型 ，以防止 `JavaScript` 代码阻塞，无需为每个请求创建新线程。当 `Node` 执行 I/O 操作时，如从网络读取、访问数据库或文件系统，`Node` 不会阻塞线程和浪费 CPU 周期等待，而是会在响应返回时恢复操作。
+
+> "I/O" 主要指由[libuv](https://libuv.org/)支持的，与系统磁盘和网络之间的交互。
+>
+> **阻塞** 是指在 Node 程序中，其它 JavaScript 语句的执行，必须等待一个非 JavaScript 操作完成
+
+操作系统内核对 I/O 只有：阻塞和非阻塞。调用阻塞 I/O 时，应用程序需要等待 I/O 完成才会返回结果；非阻塞 I/O 则会立即返回，但为了获取数据，需要通过**轮询**来重复调用确认 I/O 已完成。
+
+现存的轮询技术主要有以下这些
+
+- read：最原始、性能最低的一种，通过重复调用来检查 I/O 的状态来完成完整数据的读取
+- select：通过文件描述符上的事件状态来进行判断，由于采用长度为 1024 的数组来存储状态，所以最多可以同时检查 1024 个文件描述符
+- poll：较 select 有所改进，采用链表避免数组长度的限制
+- epoll：Linux 下效率最高的 I/O 事件通知机制，真实利用来事件通知、执行回调的方式
+
+### 实现方式
+
+通过多线程的方式，让其他线程进行阻塞 I/O 或者非阻塞 I/O 加轮询的方式来完成 I/O 操作，然后通过线程之前的通信将 I/O 得到的数据进行传递，来模拟实现异步 I/O![image-20221214202939284](http://melon.melon95.cn/images/2022/12/14/image-20221214202939284-cce0cb6dae2bfb6b8aeec1974c3a7dea.png)
+
+`Node` 模块中有如下这些 API 用到了线程池：
+
+1. I/O 密集型任务：
+   1. [DNS](https://nodejs.org/api/dns.html)：`dns.lookup()`，`dns.lookupService()`。
+   2. [文件系统](https://nodejs.org/api/fs.html#fs_threadpool_usage)：所有的文件系统 API。除 `fs.FSWatcher()` 和那些显式同步调用的 API 之外，都使用 libuv 的线程池。
+2. CPU 密集型任务：
+   1. [Crypto](https://nodejs.org/api/crypto.html)：`crypto.pbkdf2()`、`crypto.scrypt()`、`crypto.randomBytes()`、`crypto.randomFill()`、`crypto.generateKeyPair()`。
+   2. [Zlib](https://nodejs.org/api/zlib.html#zlib_threadpool_usage)：所有 Zlib 相关函数，除那些显式同步调用的 API 之外，都适用 libuv 的线程池。
+
+## 事件循环
+
+事件循环是 `Node` 处理非阻塞 I/O 操作的机制——尽管 `JavaScript` 是单线程处理的——当有可能的时候，它们会把操作转移到系统内核中去。
+
+因为目前大多数内核都是多线程的，所以它们可以在后台处理多种操作。当其中的一个操作完成的时候，内核通知 Node.js 将适合的回调函数添加到 _轮询_ 队列中等待时机执行。
+
+![image-20221213202647949](http://melon.melon95.cn/images/2022/12/13/image-20221213202647949-653d830fed92033952f6e34da4de0512.png)
+
+每个框都表示事件循环机制的一个阶段。**每个阶段都有一个先进先出（FIFO）的队列来执行回调。**
+
+当事件循环进入给定的阶段时，它将执行特定于该阶段的任何操作，然后执行该阶段队列中的回调，直到**队列用尽或已经执行到最大的回调数**。当该队列已用尽或达到回调限制，事件循环将移动到下一阶段。
+
+- **Timeout(定时器)：**执行已经被 `setInterval` 、`setTimeout` 调度的回调函数
+- **Pending callback(待定回调)：**执行延迟到下一个循环迭代的 I/O 回调，如：对某些系统操作（如 TCP 错误类型）执行回调
+- **Idle,prepare：**仅系统内部使用
+- **Poll(轮询)：**检索新的 I/O 事件；执行与 I/O 相关的回调
+- **Check(检测)：**执行 `setImmediate` 的回调函数
+- **Close callback(关闭的回调函数)：**一些关闭的回调函数，如：`socket.on('close', ''')`
+
+这其中常见的有三个阶段：`Timeout(定时器)` 、`Poll(轮询)` 、`Check(检查)`，也是需要重点理解的三个阶段。
+
+### 定时器阶段
+
+定时器可以在回调函数后指定阀值，即最早多少毫秒后会开始在事件循环中排队等待执行。
+
+> Poll 阶段控制定时器何时执行
+
+### 轮询阶段
+
+Poll 阶段有两个功能：
+
+1. 计算应该阻塞和轮询 I/O 的事件
+2. 然后处理轮询队列中的事件
+
+当事件循环进入轮询阶段且没有被调度的定时器时，将发生以下两种情况：
+
+- 如果轮询队列不为空，事件循环将循环执行队列中的回调函数，直到队列为空或执行到最大回调数
+- 如果轮询队列为空，也会分为两种情况：
+  - 如果有被调度的 `setImmediate`，则事件循环将结束轮询阶段，并继续 **检查阶段** 以执行被调度的回调
+  - 如果没有被调度的 `setImmediate` ，则事件循环将等待回调呗添加到队列中
+
+一旦轮询队列为空，事件循环将检查已达到时间阀值的定时器，如果一个或多个定时器已准备就绪，则事件循环将绕回定时器阶段以执行这些定时器回调
+
+### 检查阶段
+
+此阶段允许人员在 **轮询** 阶段完成后立即执行回调。如果轮询阶段变为空闲状态，并且脚本使用 `setImmediate()` 后被排列在队列中，则事件循环可能继续到 **检查** 阶段而不是等待。
+
+`setImmediate()` 实际上是一个在事件循环的单独阶段运行的特殊计时器。它使用一个 libuv API 来安排回调在 **轮询** 阶段完成后执行。
+
+通常，在执行代码时，事件循环最终会进入轮询阶段，在该阶段它将等待传入连接、请求等。但是，如果回调已使用 `setImmediate()`调度过，并且轮询阶段变为空闲状态，则它将结束此阶段，并继续到检查阶段而不是继续等待轮询事件。
+
+### setImmediate 和 setTimeout
+
+`setImmediate()` 和 `setTimeout()` 很类似，但是基于被调用的时机，他们也有不同表现。
+
+- `setImmediate()` 设计为一旦在当前 **轮询** 阶段完成， 就执行脚本。
+- `setTimeout()` 在最小阈值（ms 单位）过后运行脚本。
+
+执行定时器的顺序将根据调用它们的上下文而异：
+
+- 如果二者都从主模块内调用，则时序将受进程性能的约束
+- 如果是在 I/O 回调中调用，`setImmediate` 永远比 `setTineout` 先执行
+
+### setImmediate 和 process.nextTick
+
+可能已经注意到 `process.nextTick()` 在图示中没有显示，即使它是异步 API 的一部分。这是因为 `process.nextTick()` 从技术上讲不是事件循环的一部分。相反，**它都将在当前操作完成后处理 `nextTickQueue`， 而不管事件循环的当前阶段如何**。这里所谓的 _操作_ 被定义为来自底层 C/C++ 处理器的转换，和需要处理的 JavaScript 代码的执行。
+
+回顾我们的图示，任何时候在给定的阶段中调用 `process.nextTick()`，所有传递到 `process.nextTick()` 的回调将在事件循环继续之前解析。这可能会造成一些糟糕的情况，因为**它允许您通过递归 `process.nextTick()`调用来“饿死”您的 I/O**，阻止事件循环到达 **轮询** 阶段。`process.nextTick`可以理解为 `JavaScript` 中事件循环的微任务，而 `Node` 事件循环中的每个阶段可以理解为一个 `JavaScript` 中事件循环的宏任务。
+
+- `process.nextTick()` 在同一个阶段立即执行
+- `setImmediate()` 在事件循环的的检查阶段执行
+
+### process.nextTick 和 Promise.then
+
+`process.nextTick` 和 `Promise.then` 都会在当前阶段结束后下个阶段前执行，那么它们的执行顺序是怎么样的了：
+
+```javascript
+const promise = new Promise((resolve, reject) => {
+  resolve(1)
+})
+
+process.nextTick(() => {
+  console.log('nextTick 1')
+})
+
+promise.then(() => {
+  console.log(`then 1`)
+})
+
+promise.then(() => {
+  console.log(`then 2`)
+})
+
+promise
+  .then(() => {
+    console.log(`then 3`)
+  })
+  .then(() => {
+    console.log('then3 then 1')
+  })
+  .then(() => {
+    console.log('then3 then 1 then1')
+  })
+
+process.nextTick(() => {
+  console.log('nextTick 2')
+})
+
+// nextTick 1
+// nextTick 2
+// then 1
+// then 2
+// then 3
+// then3 then 1
+// then3 then 1 then1
+```
+
+无论是在主模块还是在 I/O 回调中，`process.nextTick` 都会比 `Promise.then` 先执行。
+
+## 并发和吞吐量
+
+在 `Node` 中 `JavaScript` 的执行是单线程的，因此并发性是指事件循环在完成其他工作后执行 `JavaScript` 回调函数的能力。任何预期以并行方式运行的代码必须让事件循环能够在非 JavaScript 操作（比如 I/O ）执行的同时继续运行。

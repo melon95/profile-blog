@@ -176,6 +176,26 @@ const sideNavList: {
       label: '模块',
       router: '/module',
     },
+    {
+      label: '异步',
+      router: '/async',
+    },
+    {
+      label: '内存管理',
+      router: '/memory',
+    },
+    {
+      label: '数据处理',
+      router: '/data',
+    },
+    {
+      label: '网络',
+      router: '/network',
+    },
+    {
+      label: '进程',
+      router: '/process',
+    },
   ],
 }
 

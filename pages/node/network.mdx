@@ -1,0 +1,136 @@
+---
+title: 网络
+keyword: nodejs 网络 HTTP HTTPS
+---
+
+# 网络
+
+在 `Node` 中有以下几个跟网络相关的模块：
+
+- TCP(net)
+- UDP(datagram)
+- WebSocket
+- HTTP
+- HTTPS
+- HTTP2
+
+HTTP 是常用的网络模块，因此接下来以 HTTP 来学习
+
+## HTTP
+
+`Node` 中的 HTTP 模块用来解决以往 http 协议中使用的难点和痛点，特别是大的数据块。HTTP 通过 `Stream` 来传递数据。
+
+启动一个 `http` 服务之需要几行代码：
+
+```javascript
+const http = require('http')
+
+const app = http.createServer((request, response) => {
+  response.end('i am node http module')
+})
+
+app.listen(4000)
+
+console.log('serve is listener in http://localhost:4000')
+```
+
+`createServer` 对于针对该服务器发出的每个 HTTP 请求，传入的函数都会被调用一次，因为被称为请求处理程序。
+
+`createServer` 的返回值 `app` 对象是一个 `EventEmitter` 实例，上面也可以通过事件的方式来编写：
+
+```javascript
+const http = require('http')
+
+const app = http.createServer()
+
+app.on('request', (request, response) => {
+  response.end('i am a http module')
+})
+
+app.listen(4000)
+
+console.log('serve is listener in http://localhost:4000')
+```
+
+![image-20221218133438073](http://melon.melon95.cn/images/2022/12/18/image-20221218133438073-481ad22ce5ac5ca04fd3ee0b0b8571c7.png)
+
+### 请求信息
+
+处理请求时，往往是根据请求路径和请求方法来决定接下来要执行的逻辑，这些信息可以从 `request` 对象上获取，`request` 对象是 `ReadableStream`，同时也是一个 `EventEmitter` 实例。
+
+```javascript
+const { method, url, headers } = request
+```
+
+在 `request` 上可以方便的获取请求路径、请求方法、请求头，但是请求体却不能通过变量获取，而是需要通过在 `request` 上监听 `data` 方法来流式获取（当然 NPM 上有很多包已经做了这些事情）：
+
+```javascript
+let body = []
+request
+  .on('data', (chunk) => {
+    body.push(chunk)
+  })
+  .on('end', () => {
+    body = Buffer.concat(body).toString()
+    // at this point, `body` has the entire request body stored in it as a string
+  })
+```
+
+### 响应信息
+
+#### 状态码
+
+如果不主动去设置状态码，默认会赋值 200：
+
+```javascript
+response.statusCode = 200
+```
+
+#### 响应头
+
+在响应中设置标头时，它们的名称不区分大小写。如果您重复设置标头，则您设置的最后一个值是发送的值：
+
+```javascript
+response.setHeader('Content-Type', 'application/json')
+response.setHeader('X-Powered-By', 'bacon')
+```
+
+#### 响应体
+
+由于`response`对象是[`WritableStream`](https://nodejs.org/api/stream.html#stream_class_stream_writable)，将响应主体写出到客户端只是使用通常的流方法的问题：
+
+```javascript
+response.write('<html>')
+response.write('<body>')
+response.write('<h1>Hello, World!</h1>')
+response.write('</body>')
+response.write('</html>')
+response.end()
+```
+
+流上的`end`函数还可以接收一些可选数据作为流上的最后一位数据发送，因此我们可以将上面的示例简化如下。
+
+```javascript
+response.end('<html><body><h1>Hello, World!</h1></body></html>')
+```
+
+## HTTPS
+
+HTTPS 是基于 TLS/SSL 的 HTTP 协议。创建一个 HTTPS 服务也很简单：
+
+```javascript
+const https = require('https')
+const fs = require('fs')
+
+const options = {
+  key: fs.readFileSync('test/fixtures/keys/agent2-key.pem'),
+  cert: fs.readFileSync('test/fixtures/keys/agent2-cert.pem'),
+}
+
+https
+  .createServer(options, (req, res) => {
+    res.writeHead(200)
+    res.end('hello world\n')
+  })
+  .listen(8000)
+```

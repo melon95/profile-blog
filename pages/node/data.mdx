@@ -1,0 +1,86 @@
+---
+title: 数据处理
+keyword: nodejs Buffer Stream
+---
+
+# Buffer 和 Stream
+
+## Buffer
+
+`Buffer` 类是 `Uint8Array` 子类，用于表示固定长度的字节。 `Buffer` 所占用的内存不是通过 V8 分配的，属于堆外内存。
+
+由于 `Buffer` 太过常见，`Node` 在进程启动时就已经加载了它，所以在使用 `Buffer` 时，无须通过 `require` 即可直接使用。
+
+### 内存分配
+
+`Buffer` 对象的内存分配不是在 V8 的堆内存中，而是在 `Node` 的 C++ 层面实现内存的申请。因为处理大量的字节数据时不能采用需要一点内存就想系统申请，这会给系统带来一定的压力。
+
+为了高效地使用申请来的内存，`Node` 采用 slab 动态分配机制，slab 具有三种状态：
+
+- full：完全分配状态
+- partial：部分分配状态
+- empty：没有被分配状态
+
+当我们需要一个 `Buffer` 对象，可以通过一下方式分配指定大小的 `Buffer` 对象：
+
+```java
+new Buffer(size)
+```
+
+`Node` 以 8KB 为界限来区分 `Buffer ` 是大对象还是小对象，这个 8KB 也就是每个 slab 的大小值，在 `JavaScript` 层面，以它作为单元进行内存的分配。
+
+### 字符串转换
+
+当进行 `Buffer` 和字符串的转换时，必须制定一个字符编码格式，默认为 UTF-8。
+
+`Node` 目前支持以下字符编码：
+
+- `utf-8`
+- `utf16le`
+- `latin1`
+- `ascii`
+- `binary`
+- `ucs2`
+
+`Node ` 还支持将二进制和字符串进行转换：
+
+- `base64`
+- `base64url`
+- `hex`
+
+```javascript
+const str = '床前明月光，疑是地上霜，举头望明月，低头思故乡'
+
+const strBuffer = Buffer.from(str)
+
+strBuffer.toString() // '床前明月光，疑是地上霜，举头望明月，低头思故乡'
+
+const strBase64 = strBuffer.toString('base64') // 5bqK5YmN5piO5pyI5YWJ77yM55aR5piv5Zyw5LiK6Zyc77yM5Li+5aS05pyb5piO5pyI77yM5L2O5aS05oCd5pWF5Lmh
+
+Buffer.from(strBase64, 'base64').toString() // '床前明月光，疑是地上霜，举头望明月，低头思故乡'
+```
+
+## Stream
+
+`Stream` 是用于处理 `Node` 中数据流的抽象接口，`Stream` 是基于 `EventEmitter` 实现的，是`EventEmitter ` 的实例。
+
+`Stream` 可以分为 4 类：
+
+- 可写流：`fs.createWritableStream()`
+- 可读流：`fs.createReadableStream()`
+- 双工流：同时可读和可写
+- 转换流：双工流，在读写数据的时候可以进行修改和转换
+
+可读流和可写流都是把数据存储在内部的 `Buffer` 中。可能被缓存的数据量取决于构造函数中的参数 `highWaterMark`，对于普通的流 `highWaterMark` 是字节的大小，对于对象模式流 `highWaterMark` 是对象的总个数。
+
+当实现者调用 `stream.push(chunk)` 时数据被缓存**可读流**中，如果消费者不调用 `stream.read` ，这个数据将一直保持在内部队列中直到被消费。
+
+一旦内部可读 buffer 接受到的数据大小达到 `highWaterMark` 设置的阀值，`Stream`将暂时停止读取数据，直到当前可读 buffer 中的数据被消费。
+
+当重复调用 `stream.write(chunk)` 时数据被缓存到**可写流**中。当可写流中的数据大小小于 `highWaterMark` 设置的阀值时， 调用 `stream.write(chunk)` 会返回 ture，一旦可写流中缓存的数据大小达到或超过 `highWaterMark` 设置的阀值，将会返回 false。
+
+`Stream` API 的一个关键目标，特别是 `stream.pipe()` 方法，是将数据的缓冲限制在可接受的水平，这样不同速度的来源和目的地就不会压垮可用的内存。
+
+`highWaterMark` 选项是一个阈值，而不是一个限制：它决定了一个流在停止要求更多的数据之前所缓冲的数据量。它并不强制执行一般的严格的内存限制。特定的流实现可以选择执行更严格的限制，但这样做是可选的.
+
+因为双工流和转换流都是可读和可写的，每一个都维护着两个独立的内部缓冲区，用于读和写，允许每一方独立于另一方操作，同时保持适当和有效的数据流。例如，net.Socket 实例是双工流，其可读侧允许消费从 Socket 接收的数据，其可写侧允许向 Socket 写入数据。因为数据可能以比接收数据更快或更慢的速度被写入套接字，每一方都应该独立于另一方操作（和缓冲）

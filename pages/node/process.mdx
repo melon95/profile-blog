@@ -1,0 +1,138 @@
+---
+title: 进程
+keyword: nodejs 进程
+---
+
+# 进程
+
+`Node` 的执行是单线程的，如果一项任务占用了主线程大量的时间就会卡顿，并且单线程也无法充分利用机器的性能，因此 `Node` 提供了以下模块来解决这些问题：
+
+- worker_threads
+- child_process
+- cluster
+
+## Worker Threads（工作线程）
+
+工作线程支持使用并行执行 `JavaScript` 的线程，对于执行 CPU 密集型 `JavaScript` 操作很有用，但是堆 I/O 密集型工作帮助不大， `Node` 内置的异步 I/O 操作比工作线程更高效。工作线程可以共享内存。
+
+```javascript
+const {
+  Worker,
+  isMainThread,
+  parentPort,
+  workerData,
+} = require('worker_threads')
+
+if (isMainThread) {
+  module.exports = function parseJSAsync(script) {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(__filename, {
+        workerData: script,
+      })
+      worker.on('message', resolve)
+      worker.on('error', reject)
+      worker.on('exit', (code) => {
+        if (code !== 0)
+          reject(new Error(`Worker stopped with exit code ${code}`))
+      })
+    })
+  }
+} else {
+  const { parse } = require('some-js-parsing-library')
+  const script = workerData
+  parentPort.postMessage(parse(script))
+}
+```
+
+## Child Process（子进程）
+
+子进程提供了以类似于但不完全相同的方式生成子进程的能力
+
+```javascript
+const { spawn } = require('child_process')
+const ls = spawn('ls', ['-lh', '/usr'])
+
+ls.stdout.on('data', (data) => {
+  console.log(`stdout: ${data}`)
+})
+
+ls.stderr.on('data', (data) => {
+  console.error(`stderr: ${data}`)
+})
+
+ls.on('close', (code) => {
+  console.log(`child process exited with code ${code}`)
+})
+```
+
+默认情况下，在父 Node.js 进程和派生的子进程之间建立`stdin`、`stdout`和的管道。
+
+主要方法有：
+
+- child_process.exec：生一个 shell 并在该 shell 中运行命令
+- child_process.execFile：
+- child_pricess.fork：生成一个新的进程并调用制定的模块，并建立一个允许在父子进程中发送消息的 IPC 通信通道
+- child_process.spawn：使用指定的命令生成一个新的进程
+
+## Cluster（集群）
+
+`Node` 进程集群可用于运行多个 `Node` 实例，这些实例可以在其应用程序线程之间分配工作负载。当不需要进程隔离时，请改用工作线程模块，它允许在单个 Node.js 实例中运行多个应用程序线程。
+
+```javascript
+import cluster from 'cluster'
+import http from 'http'
+import { cpus } from 'os'
+import process from 'process'
+
+const numCPUs = cpus().length
+
+if (cluster.isPrimary) {
+  console.log(`Primary ${process.pid} is running`)
+
+  // Fork workers.
+  for (let i = 0; i < numCPUs; i++) {
+    cluster.fork()
+  }
+
+  cluster.on('exit', (worker, code, signal) => {
+    console.log(`worker ${worker.process.pid} died`)
+  })
+} else {
+  // Workers can share any TCP connection
+  // In this case it is an HTTP server
+  http
+    .createServer((req, res) => {
+      res.writeHead(200)
+      res.end('hello world\n')
+    })
+    .listen(8000)
+
+  console.log(`Worker ${process.pid} started`)
+}
+```
+
+`Node` 将在这些进程之间共享 8000 端口。
+
+工作进程使用 `child_process.fork()` 方法生成，这样它们可以通过 IPC 与父进程通信，并来回传递服务器句柄。
+
+集群模块支持两种分配传入连接的方法。
+
+第一种（也是除 Windows 外所有平台上的默认方法）是轮流方式，即主进程在一个端口上监听，接受新的连接，并以轮流方式在工作进程中分配这些连接，其中有一些内置的智能，以避免工作进程的过载。
+
+第二种方法是，主进程创建监听套接字，并将其发送给感兴趣的工作程序。工作者然后直接接受进入的连接。
+
+从理论上讲，第二种方法应该能提供最好的性能。然而，在实践中，由于操作系统调度器的变化无常，分布往往是非常不平衡的。有人观察到，在总共 8 个进程中，超过 70%的连接最终只在两个进程中。
+
+由于 `server.listen()` 将大部分工作交给了主进程，有三种情况下，普通的 Node.js 进程和集群工作者的行为有所不同。
+
+- `server.listen({fd: 7})` 因为消息被传递给了主进程，所以父进程中的文件描述符 7 将被监听，并将句柄传递给工作者，而不是监听工作者对 7 号文件描述符引用的想法。
+
+- `server.listen(handle)` 明确监听句柄将导致工作者使用提供的句柄，而不是与主进程对话。
+
+- `server.listen(0)` 通常，这将导致服务器监听一个随机端口。然而，在一个集群中，每个工作者在每次执行 listen(0) 时都会收到相同的 "随机 "端口。从本质上讲，第一次的端口是随机的，但此后是可预测的。要在一个独特的端口上进行监听，请根据集群工作者的 ID 生成一个端口号。
+
+Node.js 不提供路由逻辑。因此，重要的是要设计一个应用程序，使其在会话和登录等方面不要过于依赖内存中的数据对象。
+
+因为工作者都是独立的进程，他们可以根据程序的需要被杀死或重新生成，而不影响其他工作者。只要有一些工作者还活着，服务器就会继续接受连接。如果没有工作者活着，现有的连接将被放弃，新的连接将被拒绝。然而，Node.js 不会自动管理工作者的数量。应用程序有责任根据自己的需要来管理工作者池。
+
+尽管集群模块的一个主要用例是网络，但它也可以用于其他需要工作者进程的用例。
